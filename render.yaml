@@ -14,3 +14,7 @@ services:
         value: "157859600"
       - key: GITHUB_WEBHOOK_SECRET
         generateValue: true
+      - key: PUBLIC_AUDIT_ENABLED
+        value: "true"
+      - key: AUDIT_CACHE_SECONDS
+        value: "300"

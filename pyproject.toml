@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qnode-repo-auditor"
-version = "0.1.0"
-description = "A minimal GitHub App that reports repository engineering-readiness checks."
+version = "0.2.0"
+description = "Actionable GitHub repository readiness and pull-request risk intelligence."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -18,10 +18,29 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9"]
+dev = [
+  "pytest>=8,<9",
+  "pytest-cov>=6,<8",
+  "ruff>=0.12,<1",
+]
+
+[project.urls]
+Homepage = "https://qnode-repo-auditor.onrender.com"
+Repository = "https://github.com/Kxrma47/qnode-repo-auditor"
+Issues = "https://github.com/Kxrma47/qnode-repo-auditor/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["qnode_auditor*"]
+
+[tool.setuptools.package-data]
+qnode_auditor = ["templates/*.html", "static/*.css", "static/*.js", "static/*.svg"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

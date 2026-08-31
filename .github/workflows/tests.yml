@@ -20,4 +20,5 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install -e '.[dev]'
-      - run: pytest -q
+      - run: ruff check .
+      - run: pytest --cov=qnode_auditor --cov-report=term-missing --cov-fail-under=85

@@ -1,22 +1,58 @@
 # GitHub App registration
 
-Register a GitHub App with these minimum settings:
+## App settings
 
-- Webhook URL: `https://YOUR-HOST/webhook`
-- Webhook secret: a generated random value
-- Repository permissions: **Contents: read**, **Checks: read and write**, **Metadata: read**
-- Subscribe to events: **Pull request**
-- Installation scope: only selected repositories while testing
+Register a GitHub App with:
 
-If an account cannot save an App-level webhook, create a repository webhook for the installed test repository with the same URL and secret. Subscribe it only to **Pull requests**, then set `GITHUB_INSTALLATION_ID` to the App installation ID. This repository uses that scoped configuration.
+- **Homepage URL:** your deployed service root
+- **Webhook URL:** `https://YOUR-HOST/webhook`
+- **Webhook secret:** a generated high-entropy value
+- **Expire user authorization tokens:** irrelevant; QNode does not request user authorization
 
-Generate a private key only after registration. Store the PEM outside the repository and point `GITHUB_PRIVATE_KEY_PATH` to it. Never paste the key into an issue, log, commit, or deployment variable visible to clients.
+Repository permissions:
 
-For local development, expose port 8000 using a trusted HTTPS tunnel and update the webhook URL. Send a GitHub test ping, then open a pull request in an installed test repository and confirm that the **QNode engineering readiness** check appears.
+- **Metadata:** read (GitHub grants this baseline permission)
+- **Contents:** read
+- **Pull requests:** read
+- **Checks:** read and write
+
+Subscribe to:
+
+- **Pull request**
+- **Check run**
+
+Install the App only on repositories that should receive QNode Checks. The public scanner does not require installation and only works with public repositories.
+
+## Credentials
+
+Generate a private key after registration. Store the PEM outside the repository and configure one of:
+
+- `GITHUB_PRIVATE_KEY` for a deployment secret; or
+- `GITHUB_PRIVATE_KEY_PATH` for local development.
+
+Set `GITHUB_APP_ID` to the App ID. `GITHUB_INSTALLATION_ID` is only a fallback for repository-level webhook configurations whose payload does not include an installation object.
+
+Never paste the private key, webhook secret, installation token, or a real webhook payload into an issue, commit, screenshot, or client-visible setting.
+
+## Local webhook testing
+
+1. Run the service on port 8000.
+2. Expose it through a trusted HTTPS tunnel.
+3. Set the App webhook URL to the tunnel's `/webhook` route.
+4. Send a GitHub test ping and confirm HTTP 200.
+5. Open a pull request in an installed repository.
+6. Confirm **QNode repository intelligence** appears on the head commit.
+7. Choose **Re-run audit** and confirm the requested-action delivery completes.
 
 ## Production verification
 
-1. Confirm the webhook is active, uses `application/json`, and verifies TLS.
-2. Confirm a GitHub ping returns HTTP 200.
-3. Open a pull request and confirm its delivery returns HTTP 200.
-4. Confirm the **QNode engineering readiness** check completes on the pull request head commit.
+1. `/health` reports `ready` and `webhook_configured: true`.
+2. The webhook uses `application/json`, verifies TLS, and has no failing deliveries.
+3. A pull request creates one completed Check with a score, evidence, recommendations, and any applicable annotations.
+4. Re-delivering the same webhook delivery ID does not create another Check within the same running process.
+5. The service logs do not contain payloads, installation tokens, or private keys.
+6. The installed App has no permissions beyond those listed above.
+
+## Repository webhook fallback
+
+If an account cannot save an App-level webhook, create a repository webhook with the same URL and secret, subscribe it to pull-request events, and configure `GITHUB_INSTALLATION_ID`. The Check re-run button requires the App's **Check run** event subscription and therefore may not work with a pull-request-only repository webhook.

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="QNode audits public GitHub repositories and pull requests for engineering-readiness signals.">
+  <meta name="color-scheme" content="dark">
+  <title>QNode · Repository Intelligence</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body data-public-audit="{{ 'true' if public_audit_enabled else 'false' }}">
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <header class="site-header shell">
+    <a class="brand" href="/" aria-label="QNode home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>QNODE</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#scanner">Scanner</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="https://github.com/Kxrma47/qnode-repo-auditor">GitHub</a>
+      <a class="service-pill" href="/health"><span></span>Operational</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero shell">
+      <div class="hero-copy">
+        <div class="eyebrow"><span>REPOSITORY INTELLIGENCE</span><b>PATH-ONLY ANALYSIS</b></div>
+        <h1>Find the engineering gaps<br><em>before reviewers do.</em></h1>
+        <p class="lede">QNode turns repository structure and pull-request metadata into a clear readiness score, concrete evidence, and the next improvements worth making.</p>
+        <div class="trust-row" aria-label="Privacy and behavior">
+          <span>◆ No source contents</span>
+          <span>◆ No data retention</span>
+          <span>◆ Advisory, never blocking</span>
+        </div>
+      </div>
+
+      <aside class="signal-panel" aria-label="QNode signal preview">
+        <div class="panel-bar"><span>QNODE::LIVE</span><span class="pulse">SCANNER READY</span></div>
+        <div class="orbit" aria-hidden="true">
+          <div class="orbit-ring ring-a"></div>
+          <div class="orbit-ring ring-b"></div>
+          <div class="orbit-core"></div>
+        </div>
+        <div class="terminal-lines">
+          <div><span>01</span> map repository safeguards</div>
+          <div><span>02</span> rank high-impact gaps</div>
+          <div><span>03</span> inspect pull-request risk</div>
+        </div>
+      </aside>
+    </section>
+
+    <section id="scanner" class="scanner shell" aria-labelledby="scanner-title">
+      <div class="section-heading">
+        <span>01 // PUBLIC SCANNER</span>
+        <h2 id="scanner-title">Audit a GitHub repository</h2>
+        <p>Enter any public repository. QNode reads its file tree—not the files themselves.</p>
+      </div>
+
+      <form id="audit-form" class="audit-form" novalidate>
+        <label for="repository">Repository</label>
+        <div class="input-row">
+          <div class="repo-input">
+            <span aria-hidden="true">github.com/</span>
+            <input id="repository" name="repository" value="Kxrma47/qnode-repo-auditor" placeholder="owner/repository" autocomplete="off" spellcheck="false" required>
+          </div>
+          <button id="scan-button" type="submit">
+            <span class="button-label">Run audit</span>
+            <span class="button-loader" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p id="form-message" class="form-message" role="status" aria-live="polite"></p>
+      </form>
+
+      <section id="report" class="report" hidden aria-live="polite">
+        <header class="report-header">
+          <div class="score-orbit" id="score-orbit">
+            <div><strong id="score">—</strong><span>/100</span></div>
+          </div>
+          <div class="report-title">
+            <div class="eyebrow"><span id="report-grade">GRADE —</span><b id="report-ref">DEFAULT</b></div>
+            <h3><a id="report-link" href="#">Repository</a></h3>
+            <p id="report-description"></p>
+            <div class="report-meta">
+              <span id="report-language">Language —</span>
+              <span id="report-paths">0 paths</span>
+              <span id="report-updated">Updated —</span>
+            </div>
+          </div>
+          <div class="report-count"><strong id="passed-count">0/0</strong><span>safeguards</span></div>
+        </header>
+
+        <div class="report-grid">
+          <div>
+            <div class="subheading"><span>DETECTED SIGNALS</span><b id="cache-state"></b></div>
+            <div id="checks" class="checks"></div>
+          </div>
+          <aside class="recommendations">
+            <div class="subheading"><span>NEXT BEST ACTIONS</span><b>BY IMPACT</b></div>
+            <ol id="recommendation-list"></ol>
+          </aside>
+        </div>
+        <p id="truncated-warning" class="warning" hidden>GitHub truncated this repository tree. The report may be incomplete.</p>
+      </section>
+    </section>
+
+    <section id="capabilities" class="capabilities shell" aria-labelledby="capabilities-title">
+      <div class="section-heading compact">
+        <span>02 // INSTALLED APP</span>
+        <h2 id="capabilities-title">Useful where engineering happens</h2>
+      </div>
+      <div class="capability-grid">
+        <article>
+          <span class="card-index">01</span>
+          <h3>Readiness map</h3>
+          <p>Twelve weighted safeguards across quality, security, supply chain, community, and operations—with exact path evidence.</p>
+        </article>
+        <article>
+          <span class="card-index">02</span>
+          <h3>PR risk signals</h3>
+          <p>Flags untested source changes, unlocked dependency updates, sensitive credential paths, migrations, workflows, and oversized diffs.</p>
+        </article>
+        <article>
+          <span class="card-index">03</span>
+          <h3>Actionable Checks</h3>
+          <p>Publishes annotations and prioritized fixes directly on pull requests, with a one-click re-run after corrections.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">
+    <span>QNODE // ENGINEERING SIGNALS, NOT SECURITY CERTIFICATION</span>
+    <a href="mailto:mahidulhaqalif@gmail.com">Contact</a>
+  </footer>
+</body>
+</html>

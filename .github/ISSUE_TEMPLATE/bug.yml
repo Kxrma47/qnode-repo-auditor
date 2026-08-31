@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible problem in QNode.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve QNode. Never include webhook secrets, tokens, or private keys.
+  - type: input
+    id: version
+    attributes:
+      label: QNode version or commit
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the expected result and the actual result.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide safe steps, a public repository, or a sanitized webhook fixture.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials and private repository data.
+          required: true
