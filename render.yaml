@@ -10,5 +10,7 @@ services:
         value: "4776373"
       - key: GITHUB_PRIVATE_KEY
         sync: false
+      - key: GITHUB_INSTALLATION_ID
+        value: "157859600"
       - key: GITHUB_WEBHOOK_SECRET
         generateValue: true

@@ -61,6 +61,10 @@ QNode currently checks seven repository-level signals using file paths only. Sco
 - Check annotations with remediation links
 - Installation dashboard with aggregate-free, privacy-preserving status
 
+## Support
+
+For installation or operational questions, email [mahidulhaqalif@gmail.com](mailto:mahidulhaqalif@gmail.com) or open a repository issue. Report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT © 2026 Mahidul Haque

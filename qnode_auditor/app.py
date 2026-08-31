@@ -13,6 +13,7 @@ def create_app(config: dict | None = None) -> Flask:
         GITHUB_APP_ID=os.getenv("GITHUB_APP_ID", ""),
         GITHUB_PRIVATE_KEY=os.getenv("GITHUB_PRIVATE_KEY", ""),
         GITHUB_PRIVATE_KEY_PATH=os.getenv("GITHUB_PRIVATE_KEY_PATH", ""),
+        GITHUB_INSTALLATION_ID=os.getenv("GITHUB_INSTALLATION_ID", ""),
         GITHUB_WEBHOOK_SECRET=os.getenv("GITHUB_WEBHOOK_SECRET", ""),
     )
     if config:
@@ -81,7 +82,10 @@ def create_app(config: dict | None = None) -> Flask:
         }:
             return jsonify(ok=True, ignored=True)
 
-        installation_id = payload["installation"]["id"]
+        installation_id = (payload.get("installation") or {}).get("id")
+        installation_id = installation_id or app.config["GITHUB_INSTALLATION_ID"]
+        if not installation_id:
+            abort(503)
         repository = payload["repository"]["full_name"]
         sha = payload["pull_request"]["head"]["sha"]
         client = GitHubAppClient(
@@ -89,7 +93,7 @@ def create_app(config: dict | None = None) -> Flask:
             private_key=app.config["GITHUB_PRIVATE_KEY"],
             private_key_path=app.config["GITHUB_PRIVATE_KEY_PATH"],
         )
-        token = client.installation_token(installation_id)
+        token = client.installation_token(int(installation_id))
         audit = audit_tree(client.tree_paths(repository, sha, token))
         client.publish_check(repository, sha, audit, token)
         return jsonify(ok=True, score=audit.score)
