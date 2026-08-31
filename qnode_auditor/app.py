@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, abort, jsonify, request
+from flask import Flask, abort, jsonify, render_template_string, request
 
 from .audit import audit_tree
 from .github import GitHubAppClient
@@ -17,6 +17,46 @@ def create_app(config: dict | None = None) -> Flask:
     )
     if config:
         app.config.update(config)
+
+    @app.get("/")
+    def index():
+        return render_template_string(
+            """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>QNode Repository Auditor</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #071019; color: #c9d7e3; }
+    main { width: min(680px, calc(100% - 32px)); padding: 32px; border: 1px solid #1c6070; background: #0a1621; box-shadow: 0 0 48px #00d9ff12; }
+    p { line-height: 1.65; }
+    .eyebrow { color: #61e7ff; font-size: .78rem; letter-spacing: .14em; }
+    h1 { margin: 12px 0; color: #f1f7fb; font-size: clamp(1.55rem, 5vw, 2.3rem); }
+    .status { display: inline-flex; gap: 8px; align-items: center; color: #73f7bd; }
+    .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 12px currentColor; }
+    nav { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    a { color: #7de8ff; text-decoration: none; border-bottom: 1px solid #2f7080; }
+    a:hover { color: #fff; border-color: #fff; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">QNODE // SERVICE STATUS</div>
+    <h1>Repository Auditor</h1>
+    <p>Signed pull-request webhooks, deterministic repository checks, and minimal GitHub permissions.</p>
+    <div class="status">OPERATIONAL</div>
+    <nav>
+      <a href="/health">Health endpoint</a>
+      <a href="https://github.com/Kxrma47/qnode-repo-auditor">Source repository</a>
+    </nav>
+  </main>
+</body>
+</html>"""
+        )
 
     @app.get("/health")
     def health():

@@ -13,6 +13,14 @@ def test_health():
     assert client.get("/health").json["status"] == "ready"
 
 
+def test_index():
+    client = create_app({"TESTING": True}).test_client()
+    response = client.get("/")
+    assert response.status_code == 200
+    assert b"QNode Repository Auditor" in response.data
+    assert b"OPERATIONAL" in response.data
+
+
 def test_ping_requires_and_accepts_signature():
     secret, payload = "test-secret", b'{"zen":"hello"}'
     client = create_app({"TESTING": True, "GITHUB_WEBHOOK_SECRET": secret}).test_client()
