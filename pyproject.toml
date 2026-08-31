@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qnode-repo-auditor"
+version = "0.1.0"
+description = "A minimal GitHub App that reports repository engineering-readiness checks."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Mahidul Haque" }]
+dependencies = [
+  "Flask>=3.0,<4",
+  "PyJWT[crypto]>=2.8,<3",
+  "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["qnode_auditor*"]
