@@ -5,4 +5,4 @@ COPY qnode_auditor ./qnode_auditor
 RUN pip install --no-cache-dir .
 USER 65532:65532
 EXPOSE 8000
-CMD ["python", "-m", "qnode_auditor.app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "30", "qnode_auditor.app:app"]

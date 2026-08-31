@@ -11,6 +11,7 @@ def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__)
     app.config.update(
         GITHUB_APP_ID=os.getenv("GITHUB_APP_ID", ""),
+        GITHUB_PRIVATE_KEY=os.getenv("GITHUB_PRIVATE_KEY", ""),
         GITHUB_PRIVATE_KEY_PATH=os.getenv("GITHUB_PRIVATE_KEY_PATH", ""),
         GITHUB_WEBHOOK_SECRET=os.getenv("GITHUB_WEBHOOK_SECRET", ""),
     )
@@ -44,7 +45,9 @@ def create_app(config: dict | None = None) -> Flask:
         repository = payload["repository"]["full_name"]
         sha = payload["pull_request"]["head"]["sha"]
         client = GitHubAppClient(
-            app.config["GITHUB_APP_ID"], app.config["GITHUB_PRIVATE_KEY_PATH"]
+            app_id=app.config["GITHUB_APP_ID"],
+            private_key=app.config["GITHUB_PRIVATE_KEY"],
+            private_key_path=app.config["GITHUB_PRIVATE_KEY_PATH"],
         )
         token = client.installation_token(installation_id)
         audit = audit_tree(client.tree_paths(repository, sha, token))

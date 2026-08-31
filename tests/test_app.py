@@ -23,3 +23,14 @@ def test_ping_requires_and_accepts_signature():
     )
     assert response.status_code == 200
     assert response.json["ok"] is True
+
+
+def test_non_pull_request_event_is_ignored():
+    secret, payload = "test-secret", b'{"action":"created"}'
+    client = create_app({"TESTING": True, "GITHUB_WEBHOOK_SECRET": secret}).test_client()
+    response = client.post(
+        "/webhook", data=payload,
+        headers={"Content-Type": "application/json", "X-GitHub-Event": "issues", "X-Hub-Signature-256": signed(secret, payload)},
+    )
+    assert response.status_code == 200
+    assert response.json == {"ignored": True, "ok": True}

@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: qnode-repo-auditor
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: GITHUB_APP_ID
+        value: "4776373"
+      - key: GITHUB_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        generateValue: true

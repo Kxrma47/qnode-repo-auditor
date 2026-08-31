@@ -8,9 +8,20 @@ import requests
 class GitHubAppClient:
     api = "https://api.github.com"
 
-    def __init__(self, app_id: str, private_key_path: str, timeout: int = 15):
+    def __init__(
+        self,
+        app_id: str,
+        private_key_path: str = "",
+        private_key: str = "",
+        timeout: int = 15,
+    ):
         self.app_id = app_id
-        self.private_key = Path(private_key_path).read_text(encoding="utf-8")
+        if private_key:
+            self.private_key = private_key.replace("\\n", "\n")
+        elif private_key_path:
+            self.private_key = Path(private_key_path).read_text(encoding="utf-8")
+        else:
+            raise ValueError("GITHUB_PRIVATE_KEY or GITHUB_PRIVATE_KEY_PATH is required")
         self.timeout = timeout
 
     def _app_jwt(self) -> str:

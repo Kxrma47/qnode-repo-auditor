@@ -47,6 +47,10 @@ python -m qnode_auditor.app
 
 The service exposes `GET /health` and `POST /webhook`. Environment variables are documented in [.env.example](.env.example); GitHub setup is in [docs/app-registration.md](docs/app-registration.md).
 
+## Deploy
+
+The repository includes a production Docker image and a Render Blueprint. Create a web service from `render.yaml`, provide the GitHub App private key as the encrypted `GITHUB_PRIVATE_KEY` value, and point the GitHub App webhook to `https://YOUR-SERVICE/webhook`. The health check is available at `/health`.
+
 ## Audit contract
 
 QNode currently checks seven repository-level signals using file paths only. Scores at or above 70 conclude with `success`; lower scores use `neutral`. This is an engineering prompt, not a security certification.
