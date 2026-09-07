@@ -5,8 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="QNode audits public GitHub repositories and pull requests for engineering-readiness signals.">
   <meta name="color-scheme" content="dark">
+  <meta property="og:title" content="QNode · Repository Intelligence">
+  <meta property="og:description" content="Privacy-first engineering-readiness and pull-request risk reports for public GitHub repositories.">
+  <meta property="og:image" content="https://qnode-repo-auditor.onrender.com/static/qnode-app-icon.jpg">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://qnode-repo-auditor.onrender.com">
   <title>QNode · Repository Intelligence</title>
-  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="icon" href="{{ url_for('static', filename='qnode-app-icon.svg') }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='qnode-app-icon.jpg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </head>
@@ -16,7 +24,7 @@
 
   <header class="site-header shell">
     <a class="brand" href="/" aria-label="QNode home">
-      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <img class="brand-icon" src="{{ url_for('static', filename='qnode-app-icon.svg') }}" alt="">
       <span>QNODE</span>
     </a>
     <nav aria-label="Primary navigation">

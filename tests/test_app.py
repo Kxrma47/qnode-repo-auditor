@@ -41,6 +41,7 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert response.status_code == 200
     assert b"Audit a repository or pull request" in response.data
     assert b"Kxrma47/qnode-repo-auditor" in response.data
+    assert b"qnode-app-icon.jpg" in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
 

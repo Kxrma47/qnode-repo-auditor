@@ -36,7 +36,7 @@ testpaths = ["tests"]
 include = ["qnode_auditor*"]
 
 [tool.setuptools.package-data]
-qnode_auditor = ["templates/*.html", "static/*.css", "static/*.js", "static/*.svg"]
+qnode_auditor = ["templates/*.html", "static/*.css", "static/*.js", "static/*.svg", "static/*.jpg"]
 
 [tool.ruff]
 target-version = "py311"

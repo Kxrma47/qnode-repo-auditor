@@ -46,6 +46,7 @@ a { color: inherit; }
 
 .site-header { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(36, 87, 115, .45); }
 .brand { display: inline-flex; gap: 12px; align-items: center; text-decoration: none; font: 800 .9rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
+.brand-icon { width: 34px; height: 34px; border-radius: 9px; box-shadow: 0 0 22px rgba(85, 228, 255, .16); }
 .brand-mark { display: flex; align-items: center; gap: 3px; }
 .brand-mark i { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
 .brand-mark i:nth-child(2) { background: var(--violet); box-shadow: 0 0 12px var(--violet); }

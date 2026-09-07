@@ -1,5 +1,7 @@
 <div align="center">
 
+<img width="116" src="qnode_auditor/static/qnode-app-icon.svg" alt="QNode Repository Auditor app icon">
+
 # QNode Repository Auditor
 
 **Actionable repository readiness and pull-request risk intelligence for GitHub.**

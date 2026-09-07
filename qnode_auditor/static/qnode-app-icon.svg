@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">QNode Repository Auditor</title>
+  <desc id="desc">A luminous quantum Q node on a dark engineering grid.</desc>
+  <defs>
+    <linearGradient id="bg" x1="38" y1="24" x2="476" y2="492" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b1a27"/>
+      <stop offset="1" stop-color="#04090f"/>
+    </linearGradient>
+    <linearGradient id="q" x1="148" y1="132" x2="384" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8af0ff"/>
+      <stop offset=".55" stop-color="#55e4ff"/>
+      <stop offset="1" stop-color="#a987ff"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0v32" fill="none" stroke="#55e4ff" stroke-opacity=".07" stroke-width="1"/>
+    </pattern>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="12" y="12" width="488" height="488" rx="108" fill="url(#bg)"/>
+  <rect x="12" y="12" width="488" height="488" rx="108" fill="url(#grid)"/>
+  <rect x="18" y="18" width="476" height="476" rx="102" fill="none" stroke="#245773" stroke-width="3"/>
+
+  <path d="M72 142V82h60M380 82h60v60M72 370v60h60M380 430h60v-60" fill="none" stroke="#55e4ff" stroke-opacity=".62" stroke-width="5" stroke-linecap="round"/>
+  <path d="M96 112h52M364 112h52M96 400h52M364 400h52" stroke="#a987ff" stroke-opacity=".56" stroke-width="3" stroke-linecap="round"/>
+
+  <g fill="none" stroke-linecap="round">
+    <ellipse cx="256" cy="252" rx="178" ry="72" transform="rotate(-19 256 252)" stroke="#a987ff" stroke-opacity=".5" stroke-width="4"/>
+    <ellipse cx="256" cy="252" rx="178" ry="72" transform="rotate(22 256 252)" stroke="#55e4ff" stroke-opacity=".34" stroke-width="4"/>
+  </g>
+
+  <path d="M343 342a128 128 0 1 1 30-82c0 28-9 55-25 76" fill="#07131d" stroke="url(#q)" stroke-width="38" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M302 310l78 82" fill="none" stroke="url(#q)" stroke-width="38" stroke-linecap="round" filter="url(#glow)"/>
+  <circle cx="256" cy="252" r="18" fill="#55e4ff" filter="url(#glow)"/>
+  <circle cx="109" cy="302" r="10" fill="#a987ff" filter="url(#glow)"/>
+  <circle cx="405" cy="199" r="10" fill="#6df2bb" filter="url(#glow)"/>
+</svg>

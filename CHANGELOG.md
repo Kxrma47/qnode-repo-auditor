@@ -8,6 +8,7 @@ All notable changes to QNode are documented here.
 - Show PR metadata and path-only risk signals in the public report.
 - Add permanent report links, Markdown copy, and JSON export actions.
 - Add prominent GitHub App installation and scanner calls to action.
+- Add a production app icon across the website, social metadata, and documentation.
 
 ## 0.2.0 — Repository intelligence
 
