@@ -60,6 +60,31 @@ def test_pull_request_files_are_converted_to_domain_objects(monkeypatch):
     assert files[0].changes == 16
 
 
+def test_pull_request_info_returns_public_report_metadata(monkeypatch):
+    def fake_request(method, url, headers, timeout, **kwargs):
+        return FakeResponse(
+            {
+                "number": 12,
+                "title": "Improve scanner",
+                "html_url": "https://github.com/owner/repo/pull/12",
+                "state": "open",
+                "draft": True,
+                "head": {"sha": "abc", "ref": "feature"},
+                "base": {"ref": "main"},
+                "changed_files": 3,
+                "additions": 40,
+                "deletions": 7,
+            }
+        )
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    pull = GitHubAppClient().pull_request_info("owner/repo", 12)
+    assert pull["head_sha"] == "abc"
+    assert pull["base_ref"] == "main"
+    assert pull["draft"] is True
+    assert pull["changed_files"] == 3
+
+
 def test_check_run_contains_actionable_output_annotations_and_rerun(monkeypatch):
     captured = {}
 

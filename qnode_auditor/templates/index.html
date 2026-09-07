@@ -23,6 +23,7 @@
       <a href="#scanner">Scanner</a>
       <a href="#capabilities">Capabilities</a>
       <a href="https://github.com/Kxrma47/qnode-repo-auditor">GitHub</a>
+      <a href="https://github.com/apps/qnode-repository-auditor">Install App</a>
       <a class="service-pill" href="/health"><span></span>Operational</a>
     </nav>
   </header>
@@ -33,6 +34,10 @@
         <div class="eyebrow"><span>REPOSITORY INTELLIGENCE</span><b>PATH-ONLY ANALYSIS</b></div>
         <h1>Find the engineering gaps<br><em>before reviewers do.</em></h1>
         <p class="lede">QNode turns repository structure and pull-request metadata into a clear readiness score, concrete evidence, and the next improvements worth making.</p>
+        <div class="hero-actions">
+          <a class="primary-action" href="#scanner">Scan a repository or PR</a>
+          <a class="secondary-action" href="https://github.com/apps/qnode-repository-auditor">Install the GitHub App</a>
+        </div>
         <div class="trust-row" aria-label="Privacy and behavior">
           <span>◆ No source contents</span>
           <span>◆ No data retention</span>
@@ -58,22 +63,23 @@
     <section id="scanner" class="scanner shell" aria-labelledby="scanner-title">
       <div class="section-heading">
         <span>01 // PUBLIC SCANNER</span>
-        <h2 id="scanner-title">Audit a GitHub repository</h2>
-        <p>Enter any public repository. QNode reads its file tree—not the files themselves.</p>
+        <h2 id="scanner-title">Audit a repository or pull request</h2>
+        <p>Paste an owner/repository name or a public GitHub pull-request URL. QNode reads paths and metadata—not source contents.</p>
       </div>
 
       <form id="audit-form" class="audit-form" novalidate>
-        <label for="repository">Repository</label>
+        <label for="repository">Repository or pull request</label>
         <div class="input-row">
           <div class="repo-input">
-            <span aria-hidden="true">github.com/</span>
-            <input id="repository" name="repository" value="Kxrma47/qnode-repo-auditor" placeholder="owner/repository" autocomplete="off" spellcheck="false" required>
+            <span aria-hidden="true">⌘</span>
+            <input id="repository" name="repository" value="Kxrma47/qnode-repo-auditor" placeholder="owner/repository or GitHub PR URL" autocomplete="off" spellcheck="false" required>
           </div>
           <button id="scan-button" type="submit">
             <span class="button-label">Run audit</span>
             <span class="button-loader" aria-hidden="true"></span>
           </button>
         </div>
+        <p class="input-help">Examples: <code>pallets/flask</code> · <code>github.com/owner/repo/pull/42</code> · <code>owner/repo#42</code></p>
         <p id="form-message" class="form-message" role="status" aria-live="polite"></p>
       </form>
 
@@ -95,6 +101,15 @@
           <div class="report-count"><strong id="passed-count">0/0</strong><span>safeguards</span></div>
         </header>
 
+        <div id="pull-summary" class="pull-summary" hidden>
+          <div><span>PULL REQUEST</span><strong id="pull-title"></strong></div>
+          <div class="pull-metrics">
+            <span id="pull-state"></span>
+            <span id="pull-files"></span>
+            <span id="pull-lines"></span>
+          </div>
+        </div>
+
         <div class="report-grid">
           <div>
             <div class="subheading"><span>DETECTED SIGNALS</span><b id="cache-state"></b></div>
@@ -104,6 +119,16 @@
             <div class="subheading"><span>NEXT BEST ACTIONS</span><b>BY IMPACT</b></div>
             <ol id="recommendation-list"></ol>
           </aside>
+        </div>
+        <section id="risk-section" class="risk-section" hidden>
+          <div class="subheading"><span>PULL-REQUEST SIGNALS</span><b id="risk-count">0 DETECTED</b></div>
+          <div id="risks" class="risk-grid"></div>
+        </section>
+        <div class="report-actions">
+          <button id="share-report" class="ghost-button" type="button">Copy report link</button>
+          <button id="copy-markdown" class="ghost-button" type="button">Copy Markdown</button>
+          <button id="download-json" class="ghost-button" type="button">Download JSON</button>
+          <span id="action-message" role="status" aria-live="polite"></span>
         </div>
         <p id="truncated-warning" class="warning" hidden>GitHub truncated this repository tree. The report may be incomplete.</p>
       </section>
@@ -129,6 +154,11 @@
           <span class="card-index">03</span>
           <h3>Actionable Checks</h3>
           <p>Publishes annotations and prioritized fixes directly on pull requests, with a one-click re-run after corrections.</p>
+        </article>
+        <article>
+          <span class="card-index">04</span>
+          <h3>Shareable reports</h3>
+          <p>Open a repository or PR audit from a direct URL, then copy its Markdown summary or export the complete JSON evidence.</p>
         </article>
       </div>
     </section>

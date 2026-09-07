@@ -15,6 +15,7 @@ from .security import verify_signature
 LOGGER = logging.getLogger("qnode")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 REF_PATTERN = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+PULL_PATTERN = re.compile(r"^[1-9][0-9]{0,9}$")
 PULL_REQUEST_ACTIONS = {"opened", "reopened", "synchronize", "ready_for_review"}
 
 
@@ -94,7 +95,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.2.0",
+            version="0.3.0",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
         )
@@ -112,6 +113,7 @@ def create_app(config: dict | None = None) -> Flask:
         values = values or {}
         repository = str(values.get("repository", "")).strip()
         requested_ref = str(values.get("ref", "")).strip()
+        requested_pull = str(values.get("pull", "")).strip()
         if not REPOSITORY_PATTERN.fullmatch(repository):
             return jsonify(error="Use a repository in owner/name format."), 400
         if requested_ref and (
@@ -120,8 +122,12 @@ def create_app(config: dict | None = None) -> Flask:
             or requested_ref.startswith("/")
         ):
             return jsonify(error="The requested Git ref is not valid."), 400
+        if requested_pull and not PULL_PATTERN.fullmatch(requested_pull):
+            return jsonify(error="The pull request number is not valid."), 400
+        if requested_pull and requested_ref:
+            return jsonify(error="Use either a pull request number or a Git ref, not both."), 400
 
-        cache_ref = requested_ref or "@default"
+        cache_ref = f"@pull:{requested_pull}" if requested_pull else requested_ref or "@default"
         cache_key = (repository.lower(), cache_ref)
         cached = public_cache.get(cache_key)
         if cached and time.monotonic() - cached[0] < app.config["AUDIT_CACHE_SECONDS"]:
@@ -133,9 +139,21 @@ def create_app(config: dict | None = None) -> Flask:
             client = github_client()
             token = app.config["GITHUB_PUBLIC_TOKEN"]
             info = client.repository_info(repository, token)
-            ref = requested_ref or info["default_branch"]
+            pull = None
+            changed_files = []
+            if requested_pull:
+                pull_number = int(requested_pull)
+                pull = client.pull_request_info(repository, pull_number, token)
+                ref = pull["head_sha"]
+                changed_files = client.pull_request_files(repository, pull_number, token)
+            else:
+                ref = requested_ref or info["default_branch"]
             snapshot = client.tree_snapshot(repository, ref, token)
-            audit = audit_tree(snapshot.paths, tree_truncated=snapshot.truncated)
+            audit = audit_tree(
+                snapshot.paths,
+                changed_files,
+                tree_truncated=snapshot.truncated,
+            )
         except requests.HTTPError as error:
             status = error.response.status_code if error.response is not None else 502
             if status == 404:
@@ -155,6 +173,8 @@ def create_app(config: dict | None = None) -> Flask:
             "cached": False,
             "audit": audit.to_dict(),
         }
+        if pull:
+            response["pull_request"] = pull
         public_cache[cache_key] = (time.monotonic(), response)
         if len(public_cache) > 256:
             oldest = min(public_cache, key=lambda key: public_cache[key][0])

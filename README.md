@@ -13,7 +13,7 @@ QNode answers two practical questions:
 1. **What engineering safeguards is this repository missing?**
 2. **What deserves extra attention in this pull request?**
 
-The public scanner evaluates any public GitHub repository and returns exact path evidence plus prioritized improvements. When installed as a GitHub App, QNode publishes the same readiness map on pull requests and adds focused risk annotations.
+The public scanner evaluates any public GitHub repository **or pull-request URL** and returns exact path evidence plus prioritized improvements. Reports have permanent share links and can be copied as Markdown or exported as JSON. When installed as a GitHub App, QNode publishes the same readiness map on pull requests and adds focused risk annotations.
 
 ## What it reports
 
@@ -46,6 +46,14 @@ QNode inspects changed-file metadata and flags:
 
 Signals appear in the GitHub Check summary and as file annotations. The check remains advisory and offers a **Re-run audit** action after changes are pushed.
 
+The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-request URL, making the same path-only risk review available before installing the App.
+
+### Share and export
+
+- Every completed scan updates the browser URL, so the report can be reopened or shared.
+- **Copy Markdown** produces a review-ready engineering summary.
+- **Download JSON** exports the complete evidence, recommendations, and PR signals for automation.
+
 ## Privacy model
 
 QNode deliberately analyzes **paths and GitHub metadata only**.
@@ -68,6 +76,12 @@ Audit a specific branch, tag, or commit:
 
 ```bash
 curl 'https://qnode-repo-auditor.onrender.com/api/audit?repository=OWNER/REPO&ref=REF'
+```
+
+Audit a public pull request:
+
+```bash
+curl 'https://qnode-repo-auditor.onrender.com/api/audit?repository=OWNER/REPO&pull=42'
 ```
 
 Inspect the scoring contract:

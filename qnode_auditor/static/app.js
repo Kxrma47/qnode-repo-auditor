@@ -3,6 +3,8 @@ const repositoryInput = document.querySelector("#repository");
 const scanButton = document.querySelector("#scan-button");
 const formMessage = document.querySelector("#form-message");
 const report = document.querySelector("#report");
+const actionMessage = document.querySelector("#action-message");
+let lastReport = null;
 
 const setText = (selector, value) => {
   document.querySelector(selector).textContent = value;
@@ -19,6 +21,23 @@ const makeElement = (tag, className, text) => {
   if (text !== undefined) element.textContent = text;
   return element;
 };
+
+function parseTarget(value) {
+  const input = value.trim();
+  const shortPull = input.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)#([1-9][0-9]*)$/);
+  if (shortPull) return { repository: `${shortPull[1]}/${shortPull[2]}`, pull: shortPull[3] };
+
+  const githubUrl = input.match(
+    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:\/pull\/([1-9][0-9]*))?\/?(?:[?#].*)?$/,
+  );
+  if (githubUrl) {
+    return { repository: `${githubUrl[1]}/${githubUrl[2]}`, pull: githubUrl[3] || "" };
+  }
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input)) {
+    return { repository: input, pull: "" };
+  }
+  return null;
+}
 
 function renderChecks(checks) {
   const container = document.querySelector("#checks");
@@ -57,11 +76,57 @@ function renderRecommendations(recommendations) {
   });
 }
 
+function renderRisks(risks) {
+  const section = document.querySelector("#risk-section");
+  const container = document.querySelector("#risks");
+  container.replaceChildren();
+  section.hidden = !lastReport?.pull_request;
+  setText("#risk-count", risks.length ? `${risks.length} DETECTED` : "CLEAR");
+  if (!risks.length) {
+    const empty = makeElement("article", "risk-card clear");
+    empty.append(
+      makeElement("strong", "", "No structural risk signals detected"),
+      makeElement("p", "", "QNode found no path-level warnings in this change set. Code review and tests are still required."),
+    );
+    container.append(empty);
+    return;
+  }
+  risks.forEach((risk) => {
+    const card = makeElement("article", `risk-card ${risk.severity}`);
+    const header = makeElement("div", "risk-header");
+    header.append(
+      makeElement("span", "risk-level", risk.severity.toUpperCase()),
+      makeElement("strong", "", risk.title),
+    );
+    card.append(header, makeElement("p", "", risk.detail));
+    if (risk.path) card.append(makeElement("code", "risk-path", risk.path));
+    if (risk.recommendation) card.append(makeElement("p", "risk-fix", risk.recommendation));
+    container.append(card);
+  });
+}
+
+function renderPullRequest(pull) {
+  const summary = document.querySelector("#pull-summary");
+  summary.hidden = !pull;
+  if (!pull) return;
+  const title = document.querySelector("#pull-title");
+  title.replaceChildren();
+  const link = makeElement("a", "", `#${pull.number} · ${pull.title}`);
+  link.href = pull.html_url;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  title.append(link);
+  setText("#pull-state", pull.draft ? "DRAFT" : pull.state.toUpperCase());
+  setText("#pull-files", `${pull.changed_files} FILES`);
+  setText("#pull-lines", `+${pull.additions.toLocaleString()} / −${pull.deletions.toLocaleString()}`);
+}
+
 function renderReport(data) {
+  lastReport = data;
   const { repository, audit } = data;
   setText("#score", audit.score);
   setText("#report-grade", `GRADE ${audit.grade}`);
-  setText("#report-ref", data.ref);
+  setText("#report-ref", data.pull_request ? `PR #${data.pull_request.number}` : data.ref);
   setText("#report-description", repository.description || "No repository description provided.");
   setText("#report-language", repository.language || "Language —");
   setText("#report-paths", `${data.scanned_paths.toLocaleString()} paths`);
@@ -79,16 +144,34 @@ function renderReport(data) {
   document.querySelector("#truncated-warning").hidden = !audit.tree_truncated;
   renderChecks(audit.checks);
   renderRecommendations(audit.recommendations);
+  renderPullRequest(data.pull_request);
+  renderRisks(audit.risks);
   report.hidden = false;
   report.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function reportUrl(target) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("repository", target.repository);
+  if (target.pull) url.searchParams.set("pull", target.pull);
+  url.hash = "scanner";
+  return url;
+}
+
+async function copyText(text, successMessage) {
+  await navigator.clipboard.writeText(text);
+  actionMessage.textContent = successMessage;
+  window.setTimeout(() => { actionMessage.textContent = ""; }, 2500);
+}
+
 async function runAudit(event) {
-  event.preventDefault();
+  if (event) event.preventDefault();
   formMessage.textContent = "";
-  const repository = repositoryInput.value.trim();
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
-    formMessage.textContent = "Enter a repository as owner/name.";
+  actionMessage.textContent = "";
+  const target = parseTarget(repositoryInput.value);
+  if (!target) {
+    formMessage.textContent = "Enter owner/repository, owner/repository#42, or a GitHub pull-request URL.";
     repositoryInput.focus();
     return;
   }
@@ -96,11 +179,13 @@ async function runAudit(event) {
   scanButton.disabled = true;
   scanButton.classList.add("loading");
   try {
-    const response = await fetch(`/api/audit?repository=${encodeURIComponent(repository)}`, {
-      headers: { Accept: "application/json" },
-    });
+    const query = new URLSearchParams({ repository: target.repository });
+    if (target.pull) query.set("pull", target.pull);
+    const response = await fetch(`/api/audit?${query}`, { headers: { Accept: "application/json" } });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "The audit could not be completed.");
+    repositoryInput.value = target.pull ? `${target.repository}#${target.pull}` : target.repository;
+    window.history.replaceState({}, "", reportUrl(target));
     renderReport(data);
   } catch (error) {
     formMessage.textContent = error.message;
@@ -110,8 +195,35 @@ async function runAudit(event) {
   }
 }
 
+document.querySelector("#share-report").addEventListener("click", async () => {
+  if (lastReport) await copyText(window.location.href, "Report link copied.");
+});
+
+document.querySelector("#copy-markdown").addEventListener("click", async () => {
+  if (lastReport) await copyText(lastReport.audit.markdown, "Markdown copied.");
+});
+
+document.querySelector("#download-json").addEventListener("click", () => {
+  if (!lastReport) return;
+  const blob = new Blob([JSON.stringify(lastReport, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${lastReport.repository.full_name.replace("/", "-")}-qnode-report.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  actionMessage.textContent = "JSON downloaded.";
+});
+
 if (document.body.dataset.publicAudit === "true") {
   form.addEventListener("submit", runAudit);
+  const params = new URLSearchParams(window.location.search);
+  const repository = params.get("repository");
+  const pull = params.get("pull");
+  if (repository) {
+    repositoryInput.value = pull ? `${repository}#${pull}` : repository;
+    runAudit();
+  }
 } else {
   repositoryInput.disabled = true;
   scanButton.disabled = true;

@@ -29,7 +29,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "webhook_configured": True,
     }
     assert "super-secret-value" not in response.text
@@ -39,7 +39,7 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     client = create_app({"TESTING": True}).test_client()
     response = client.get("/")
     assert response.status_code == 200
-    assert b"Audit a GitHub repository" in response.data
+    assert b"Audit a repository or pull request" in response.data
     assert b"Kxrma47/qnode-repo-auditor" in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
@@ -265,3 +265,59 @@ def test_public_audit_rejects_invalid_repository_and_ref():
     client = create_app({"TESTING": True}).test_client()
     assert client.get("/api/audit?repository=not-a-repository").status_code == 400
     assert client.get("/api/audit?repository=owner/repo&ref=../../secret").status_code == 400
+    assert client.get("/api/audit?repository=owner/repo&pull=zero").status_code == 400
+    assert client.get("/api/audit?repository=owner/repo&pull=1&ref=main").status_code == 400
+
+
+def test_public_pull_request_audit_includes_change_risks(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {
+                "full_name": repository,
+                "html_url": f"https://github.com/{repository}",
+                "description": "Useful repository",
+                "default_branch": "main",
+                "visibility": "public",
+                "language": "Python",
+                "stars": 3,
+                "forks": 1,
+                "open_issues": 0,
+                "archived": False,
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+
+        def pull_request_info(self, repository, number, token=""):
+            return {
+                "number": number,
+                "title": "Change service",
+                "html_url": f"https://github.com/{repository}/pull/{number}",
+                "state": "open",
+                "draft": False,
+                "head_sha": "abc123",
+                "head_ref": "feature",
+                "base_ref": "main",
+                "changed_files": 2,
+                "additions": 32,
+                "deletions": 4,
+            }
+
+        def pull_request_files(self, repository, number, token=""):
+            return [ChangedFile("src/service.py", additions=32, deletions=4)]
+
+        def tree_snapshot(self, repository, ref, token=""):
+            assert ref == "abc123"
+            return TreeSnapshot(["README.md", "src/service.py"])
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    response = create_app({"TESTING": True}).test_client().get(
+        "/api/audit?repository=owner/repo&pull=42"
+    )
+
+    assert response.status_code == 200
+    assert response.json["pull_request"]["number"] == 42
+    assert response.json["ref"] == "abc123"
+    assert response.json["audit"]["risks"][0]["key"] == "source-without-tests"
+    assert "Engineering readiness" in response.json["audit"]["markdown"]

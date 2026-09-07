@@ -161,6 +161,7 @@ class Audit:
                 }
                 for check in self.missing
             ],
+            "markdown": self.markdown(),
         }
 
 

@@ -2,6 +2,13 @@
 
 All notable changes to QNode are documented here.
 
+## 0.3.0 - 2026-09-07
+
+- Accept public GitHub pull-request URLs and `owner/repository#number` in the scanner.
+- Show PR metadata and path-only risk signals in the public report.
+- Add permanent report links, Markdown copy, and JSON export actions.
+- Add prominent GitHub App installation and scanner calls to action.
+
 ## 0.2.0 — Repository intelligence
 
 - Added a live public-repository scanner with evidence and prioritized recommendations.

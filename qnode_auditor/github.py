@@ -140,6 +140,26 @@ class GitHubAppClient:
             page += 1
         return files[:max_files]
 
+    def pull_request_info(self, repository: str, number: int, token: str = "") -> dict:
+        data = self._request(
+            "GET",
+            f"{self.api}/repos/{repository}/pulls/{number}",
+            token,
+        )
+        return {
+            "number": int(data["number"]),
+            "title": data.get("title") or "",
+            "html_url": data["html_url"],
+            "state": data.get("state", "open"),
+            "draft": bool(data.get("draft", False)),
+            "head_sha": data["head"]["sha"],
+            "head_ref": data["head"]["ref"],
+            "base_ref": data["base"]["ref"],
+            "changed_files": int(data.get("changed_files", 0)),
+            "additions": int(data.get("additions", 0)),
+            "deletions": int(data.get("deletions", 0)),
+        }
+
     def publish_check(self, repository: str, sha: str, audit, token: str) -> dict:
         output = {
             "title": f"Readiness {audit.score}/100 · Grade {audit.grade}",
