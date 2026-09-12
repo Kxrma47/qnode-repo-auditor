@@ -105,6 +105,78 @@ function renderRisks(risks) {
   });
 }
 
+function renderReviewMap(lanes) {
+  const section = document.querySelector("#review-map-section");
+  const container = document.querySelector("#review-lanes");
+  container.replaceChildren();
+  section.hidden = !lastReport?.pull_request;
+  setText("#lane-count", `${lanes.length} ${lanes.length === 1 ? "LANE" : "LANES"}`);
+
+  lanes.forEach((lane) => {
+    const card = makeElement("article", `review-lane ${lane.attention}`);
+    const header = makeElement("div", "lane-header");
+    header.append(
+      makeElement("strong", "", lane.label),
+      makeElement("span", "lane-attention", lane.attention.toUpperCase()),
+    );
+    const metrics = makeElement(
+      "p",
+      "lane-metrics",
+      `${lane.file_count} ${lane.file_count === 1 ? "file" : "files"} · +${lane.additions} / −${lane.deletions}`,
+    );
+    const focus = makeElement(
+      "p",
+      "lane-focus",
+      lane.signals.length ? lane.signals.join(" · ") : "Standard review",
+    );
+    const ownership = makeElement(
+      "p",
+      `lane-owners${lane.unowned_files ? " incomplete" : ""}`,
+      lane.owners.length
+        ? `Route to ${lane.owners.join(", ")}${lane.unowned_files ? ` · ${lane.unowned_files} unowned` : ""}`
+        : `No CODEOWNERS match · ${lane.unowned_files} unowned`,
+    );
+    const paths = makeElement("div", "lane-paths");
+    lane.paths.forEach((path) => paths.append(makeElement("code", "", path)));
+    card.append(header, metrics, focus, ownership, paths);
+    container.append(card);
+  });
+}
+
+function renderCompanions(suggestions) {
+  const section = document.querySelector("#companion-section");
+  const container = document.querySelector("#companions");
+  container.replaceChildren();
+  section.hidden = !lastReport?.pull_request;
+  setText("#companion-count", suggestions.length ? `${suggestions.length} SUGGESTED` : "COMPLETE");
+
+  if (!suggestions.length) {
+    const empty = makeElement("article", "companion-card complete");
+    empty.append(
+      makeElement("strong", "", "No obvious companion changes missing"),
+      makeElement("p", "", "Changed source files have matching tests, and dependency manifests have recognized lockfile updates."),
+    );
+    container.append(empty);
+    return;
+  }
+
+  suggestions.forEach((suggestion) => {
+    const card = makeElement("article", "companion-card");
+    const header = makeElement("div", "companion-header");
+    header.append(
+      makeElement("span", "companion-action", suggestion.action.toUpperCase()),
+      makeElement("strong", "", suggestion.kind === "test" ? "Focused test" : "Dependency lock"),
+    );
+    card.append(
+      header,
+      makeElement("code", "companion-path", suggestion.suggested_path),
+      makeElement("p", "", `For ${suggestion.source_path}`),
+      makeElement("p", "companion-reason", suggestion.reason),
+    );
+    container.append(card);
+  });
+}
+
 function renderPullRequest(pull) {
   const summary = document.querySelector("#pull-summary");
   summary.hidden = !pull;
@@ -146,6 +218,8 @@ function renderReport(data) {
   renderRecommendations(audit.recommendations);
   renderPullRequest(data.pull_request);
   renderRisks(audit.risks);
+  renderCompanions(audit.companion_suggestions || []);
+  renderReviewMap(audit.review_map || []);
   report.hidden = false;
   report.scrollIntoView({ behavior: "smooth", block: "start" });
 }

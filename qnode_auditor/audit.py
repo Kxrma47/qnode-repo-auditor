@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import PurePosixPath
@@ -45,9 +46,44 @@ class RiskSignal:
 
 
 @dataclass(frozen=True)
+class CompanionSuggestion:
+    kind: str
+    source_path: str
+    suggested_path: str
+    action: str
+    reason: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ReviewLane:
+    key: str
+    label: str
+    attention: str
+    file_count: int
+    additions: int
+    deletions: int
+    signals: tuple[str, ...] = ()
+    paths: tuple[str, ...] = ()
+    owners: tuple[str, ...] = ()
+    unowned_files: int = 0
+
+    @property
+    def changes(self) -> int:
+        return self.additions + self.deletions
+
+    def to_dict(self) -> dict:
+        return asdict(self) | {"changes": self.changes}
+
+
+@dataclass(frozen=True)
 class Audit:
     checks: tuple[Check, ...]
     risks: tuple[RiskSignal, ...] = ()
+    review_lanes: tuple[ReviewLane, ...] = ()
+    companion_suggestions: tuple[CompanionSuggestion, ...] = ()
     tree_truncated: bool = False
 
     @property
@@ -129,6 +165,34 @@ class Audit:
             for risk in self.risks:
                 lines.append(f"- **{risk.severity.upper()} · {risk.title}:** {risk.detail}")
 
+        if self.companion_suggestions:
+            lines.extend(["", "### Suggested companion changes"])
+            for suggestion in self.companion_suggestions[:8]:
+                lines.append(
+                    f"- **{suggestion.action.title()} `{suggestion.suggested_path}`** for "
+                    f"`{suggestion.source_path}` — {suggestion.reason}"
+                )
+
+        if self.review_lanes:
+            lines.extend(
+                [
+                    "",
+                    "### Review map",
+                    "",
+                    "| Lane | Owners | Attention | Files | Churn | Review focus |",
+                    "|---|---|:---:|---:|---:|---|",
+                ]
+            )
+            for lane in self.review_lanes[:8]:
+                focus = "; ".join(lane.signals) or "Standard review"
+                owners = ", ".join(lane.owners) or "Unassigned"
+                lines.append(
+                    f"| `{lane.label}` | {owners} | {lane.attention.upper()} | {lane.file_count} | "
+                    f"{lane.changes:,} | {focus} |"
+                )
+            if len(self.review_lanes) > 8:
+                lines.append(f"\n_{len(self.review_lanes) - 8} additional review lane(s) in JSON._")
+
         if self.tree_truncated:
             lines.extend(
                 ["", "> GitHub truncated the recursive tree response. Results may be incomplete."]
@@ -137,8 +201,8 @@ class Audit:
         lines.extend(
             [
                 "",
-                "_Advisory only. QNode reads repository metadata and paths, "
-                "never source contents, and never blocks a pull request._",
+                "_Advisory only. QNode reads repository metadata, paths, and CODEOWNERS policy; "
+                "never application source contents; and never blocks a pull request._",
             ]
         )
         return "\n".join(lines)
@@ -153,6 +217,10 @@ class Audit:
             "tree_truncated": self.tree_truncated,
             "checks": [check.to_dict() for check in self.checks],
             "risks": [risk.to_dict() for risk in self.risks],
+            "review_map": [lane.to_dict() for lane in self.review_lanes],
+            "companion_suggestions": [
+                suggestion.to_dict() for suggestion in self.companion_suggestions
+            ],
             "recommendations": [
                 {
                     "label": check.label,
@@ -212,6 +280,19 @@ SOURCE_SUFFIXES = {
     ".swift",
     ".scala",
 }
+MONOREPO_CONTAINERS = {"apps", "components", "libs", "modules", "packages", "services"}
+SEVERITY_RANK = {"high": 3, "medium": 2, "low": 1, "routine": 0}
+CODEOWNERS_LOCATIONS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
+LOCKFILE_SUGGESTIONS = {
+    "package.json": ("package-lock.json", "pnpm-lock.yaml", "yarn.lock"),
+    "pyproject.toml": ("uv.lock", "poetry.lock", "pdm.lock"),
+    "go.mod": ("go.sum",),
+    "cargo.toml": ("Cargo.lock",),
+    "build.gradle": ("gradle.lockfile",),
+    "build.gradle.kts": ("gradle.lockfile",),
+    "composer.json": ("composer.lock",),
+    "gemfile": ("Gemfile.lock",),
+}
 
 
 def _root_file(paths: set[str], names: Iterable[str]) -> str | None:
@@ -245,6 +326,231 @@ def _is_test_path(path: str) -> bool:
     stem = pure_path.stem
     return (
         stem.startswith("test_") or stem.endswith("_test") or ".test." in name or ".spec." in name
+    )
+
+
+def _review_lane_key(path: str) -> str:
+    parts = PurePosixPath(path).parts
+    if len(parts) == 1:
+        return "."
+    if parts[0].lower() in MONOREPO_CONTAINERS and len(parts) >= 3:
+        return "/".join(parts[:2])
+    return parts[0]
+
+
+def find_codeowners_path(paths: Iterable[str]) -> str | None:
+    available = set(paths)
+    return next((path for path in CODEOWNERS_LOCATIONS if path in available), None)
+
+
+def _codeowners_regex(pattern: str) -> re.Pattern | None:
+    pattern = pattern.strip()
+    if not pattern or pattern.startswith("!") or "[" in pattern:
+        return None
+    anchored = pattern.startswith("/")
+    pattern = pattern.lstrip("/")
+    contains_slash = "/" in pattern
+    if pattern.endswith("/"):
+        pattern += "**"
+
+    translated = []
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "*":
+            if index + 1 < len(pattern) and pattern[index + 1] == "*":
+                index += 1
+                if index + 1 < len(pattern) and pattern[index + 1] == "/":
+                    index += 1
+                    translated.append("(?:.*/)?")
+                else:
+                    translated.append(".*")
+            else:
+                translated.append("[^/]*")
+        elif char == "?":
+            translated.append("[^/]")
+        else:
+            translated.append(re.escape(char))
+        index += 1
+
+    body = "".join(translated)
+    prefix = "^" if anchored or contains_slash else "^(?:.*/)?"
+    suffix = "$" if contains_slash else r"(?:/.*)?$"
+    return re.compile(prefix + body + suffix)
+
+
+def _codeowners_rules(content: str) -> tuple[tuple[re.Pattern, tuple[str, ...]], ...]:
+    rules = []
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split()
+        pattern = _codeowners_regex(fields[0])
+        if pattern:
+            owners = []
+            for field in fields[1:]:
+                if field.startswith("#"):
+                    break
+                if field.startswith("@") or "@" in field:
+                    owners.append(field)
+            rules.append((pattern, tuple(owners)))
+    return tuple(rules)
+
+
+def _owners_for_path(
+    path: str, rules: tuple[tuple[re.Pattern, tuple[str, ...]], ...]
+) -> tuple[str, ...]:
+    owners: tuple[str, ...] = ()
+    for pattern, candidate_owners in rules:
+        if pattern.match(path):
+            owners = candidate_owners
+    return owners
+
+
+def _candidate_test_paths(source_path: str) -> tuple[str, ...]:
+    path = PurePosixPath(source_path)
+    suffix = path.suffix.lower()
+    parts = list(path.parts)
+    prefix: list[str] = []
+    relative = parts
+    if len(parts) >= 3 and parts[0].lower() in MONOREPO_CONTAINERS:
+        prefix, relative = parts[:2], parts[2:]
+
+    relative_path = PurePosixPath(*relative)
+    parent = relative_path.parent
+    stem = relative_path.stem
+    if parent.parts and parent.parts[0].lower() in {"src", "lib", "app"}:
+        inner_parent = PurePosixPath(*parent.parts[1:])
+    else:
+        inner_parent = parent
+
+    def joined(*items: str | PurePosixPath) -> str:
+        return str(PurePosixPath(*prefix, *items))
+
+    if suffix == ".py":
+        return (
+            joined("tests", inner_parent, f"test_{stem}.py"),
+            joined(parent, f"test_{stem}.py"),
+        )
+    if suffix in {".js", ".jsx", ".ts", ".tsx"}:
+        return (
+            joined(parent, f"{stem}.test{suffix}"),
+            joined(parent, "__tests__", f"{stem}.test{suffix}"),
+        )
+    if suffix == ".go":
+        return (joined(parent, f"{stem}_test.go"),)
+    if suffix == ".rb":
+        return (joined("spec", inner_parent, f"{stem}_spec.rb"),)
+    if suffix in {".java", ".kt"} and "main" in relative:
+        test_parts = ["test" if part == "main" else part for part in relative[:-1]]
+        return (joined(*test_parts, f"{stem}Test{suffix}"),)
+    if suffix == ".rs":
+        return (joined("tests", f"{stem}.rs"),)
+    return (joined("tests", inner_parent, f"test_{stem}{suffix}"),)
+
+
+def _companion_suggestions(
+    paths: set[str], files: tuple[ChangedFile, ...]
+) -> tuple[CompanionSuggestion, ...]:
+    changed_paths = {file.filename for file in files if file.status != "removed"}
+    source_files = [
+        file
+        for file in files
+        if file.status != "removed"
+        and PurePosixPath(file.filename).suffix.lower() in SOURCE_SUFFIXES
+        and not _is_test_path(file.filename)
+    ]
+    suggestions: list[CompanionSuggestion] = []
+    for file in source_files:
+        candidates = _candidate_test_paths(file.filename)
+        if any(candidate in changed_paths for candidate in candidates):
+            continue
+        existing = next((candidate for candidate in candidates if candidate in paths), None)
+        suggestions.append(
+            CompanionSuggestion(
+                kind="test",
+                source_path=file.filename,
+                suggested_path=existing or candidates[0],
+                action="update" if existing else "add",
+                reason="Exercise the changed behavior with a focused regression test.",
+            )
+        )
+
+    for file in files:
+        manifest_name = PurePosixPath(file.filename.lower()).name
+        lockfiles = LOCKFILE_SUGGESTIONS.get(manifest_name)
+        if file.status == "removed" or not lockfiles:
+            continue
+        parent = PurePosixPath(file.filename).parent
+        candidates = tuple(
+            dict.fromkeys(
+                str(location)
+                for lockfile in lockfiles
+                for location in (parent / lockfile, PurePosixPath(lockfile))
+            )
+        )
+        if any(candidate in changed_paths for candidate in candidates):
+            continue
+        existing = next((candidate for candidate in candidates if candidate in paths), None)
+        suggestions.append(
+            CompanionSuggestion(
+                kind="lockfile",
+                source_path=file.filename,
+                suggested_path=existing or str(parent / lockfiles[0]),
+                action="update" if existing else "add",
+                reason="Keep the resolved dependency graph reproducible.",
+            )
+        )
+
+    return tuple(suggestions[:12])
+
+
+def _review_map(
+    files: tuple[ChangedFile, ...],
+    risks: tuple[RiskSignal, ...],
+    codeowners_content: str = "",
+) -> tuple[ReviewLane, ...]:
+    grouped: dict[str, list[ChangedFile]] = {}
+    for file in files:
+        grouped.setdefault(_review_lane_key(file.filename), []).append(file)
+
+    lane_signals: dict[str, list[RiskSignal]] = {}
+    for risk in risks:
+        if risk.path:
+            lane_signals.setdefault(_review_lane_key(risk.path), []).append(risk)
+
+    owner_rules = _codeowners_rules(codeowners_content)
+    lanes = []
+    for key, lane_files in grouped.items():
+        signals = lane_signals.get(key, [])
+        file_owners = [_owners_for_path(file.filename, owner_rules) for file in lane_files]
+        owners = tuple(dict.fromkeys(owner for group in file_owners for owner in group))
+        attention = max(
+            (risk.severity for risk in signals),
+            key=lambda severity: SEVERITY_RANK[severity],
+            default="routine",
+        )
+        lanes.append(
+            ReviewLane(
+                key=key,
+                label="Repository root" if key == "." else f"{key}/",
+                attention=attention,
+                file_count=len(lane_files),
+                additions=sum(file.additions for file in lane_files),
+                deletions=sum(file.deletions for file in lane_files),
+                signals=tuple(dict.fromkeys(risk.title for risk in signals)),
+                paths=tuple(file.filename for file in lane_files[:5]),
+                owners=owners,
+                unowned_files=sum(not group for group in file_owners),
+            )
+        )
+
+    return tuple(
+        sorted(
+            lanes,
+            key=lambda lane: (-SEVERITY_RANK[lane.attention], -lane.changes, lane.key),
+        )
     )
 
 
@@ -379,9 +685,10 @@ def audit_tree(
     tree_paths: list[str],
     changed_files: Iterable[ChangedFile] = (),
     *,
+    codeowners_content: str = "",
     tree_truncated: bool = False,
 ) -> Audit:
-    """Evaluate repository safeguards and PR risk using paths only, never file contents."""
+    """Evaluate safeguards using paths, change metadata, and optional CODEOWNERS policy."""
     paths = {str(PurePosixPath(path)) for path in tree_paths if path}
 
     readme = _root_file(paths, {"readme", "readme.md", "readme.rst", "readme.txt"})
@@ -523,9 +830,14 @@ def audit_tree(
         ),
     )
 
+    changed_files = tuple(changed_files)
+    risks = _pull_request_risks(changed_files)
+    companion_suggestions = _companion_suggestions(paths, changed_files)
     return Audit(
         checks=checks,
-        risks=_pull_request_risks(tuple(changed_files)),
+        risks=risks,
+        review_lanes=_review_map(changed_files, risks, codeowners_content),
+        companion_suggestions=companion_suggestions,
         tree_truncated=tree_truncated,
     )
 

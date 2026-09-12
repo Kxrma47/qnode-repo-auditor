@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -108,6 +109,19 @@ class GitHubAppClient:
     def tree_paths(self, repository: str, sha: str, token: str) -> list[str]:
         """Compatibility wrapper retained for integrations using the original client API."""
         return self.tree_snapshot(repository, sha, token).paths
+
+    def file_text(self, repository: str, path: str, ref: str, token: str = "") -> str:
+        """Read a small policy file through GitHub's Contents API."""
+        safe_path = quote(path, safe="/")
+        data = self._request(
+            "GET",
+            f"{self.api}/repos/{repository}/contents/{safe_path}",
+            token,
+            params={"ref": ref},
+        )
+        if data.get("encoding") != "base64" or not data.get("content"):
+            return ""
+        return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
 
     def pull_request_files(
         self,

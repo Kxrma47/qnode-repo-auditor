@@ -1,4 +1,4 @@
-from qnode_auditor.audit import ChangedFile, audit_tree
+from qnode_auditor.audit import ChangedFile, audit_tree, find_codeowners_path
 
 COMPLETE_TREE = [
     "README.md",
@@ -94,3 +94,147 @@ def test_json_report_includes_ranked_recommendations_and_truncation():
     assert report["tree_truncated"] is True
     assert report["recommendations"][0]["points"] == 14
     assert report["checks"][0]["evidence"] == "README.md"
+
+
+def test_review_map_groups_monorepo_areas_and_ranks_attention():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("packages/web/src/app.ts", additions=40, deletions=5),
+            ChangedFile("packages/web/src/app.test.ts", additions=18),
+            ChangedFile("services/api/src/auth.py", additions=25),
+            ChangedFile("services/api/secrets/signing.key", additions=3),
+            ChangedFile("docs/authentication.md", additions=12),
+            ChangedFile("README.md", additions=2),
+        ],
+    )
+
+    lanes = audit.review_lanes
+    assert [lane.key for lane in lanes] == ["services/api", "packages/web", "docs", "."]
+    assert lanes[0].attention == "high"
+    assert lanes[0].signals == ("Possible credential material committed",)
+    assert lanes[0].file_count == 2
+    assert lanes[0].changes == 28
+    assert lanes[-1].label == "Repository root"
+
+
+def test_review_map_is_available_in_json_and_markdown():
+    report = audit_tree(
+        COMPLETE_TREE,
+        [ChangedFile("src/service.py", additions=20), ChangedFile("docs/api.md", additions=8)],
+    ).to_dict()
+
+    assert report["review_map"][0]["key"] == "src"
+    assert report["review_map"][0]["attention"] == "medium"
+    assert report["review_map"][0]["paths"] == ("src/service.py",)
+    assert "### Review map" in report["markdown"]
+    assert "Source changed without tests" in report["markdown"]
+
+
+def test_repository_audit_without_pull_request_has_no_review_map():
+    assert audit_tree(COMPLETE_TREE).to_dict()["review_map"] == []
+
+
+def test_companion_suggestions_are_path_aware_in_monorepos():
+    audit = audit_tree(
+        COMPLETE_TREE + ["packages/api/tests/users/test_service.py"],
+        [
+            ChangedFile("packages/api/src/users/service.py", additions=12),
+            ChangedFile("packages/web/src/cart.ts", additions=8),
+        ],
+    )
+
+    suggestions = {item.source_path: item for item in audit.companion_suggestions}
+    assert suggestions["packages/api/src/users/service.py"].suggested_path == (
+        "packages/api/tests/users/test_service.py"
+    )
+    assert suggestions["packages/api/src/users/service.py"].action == "update"
+    assert suggestions["packages/web/src/cart.ts"].suggested_path == (
+        "packages/web/src/cart.test.ts"
+    )
+    assert suggestions["packages/web/src/cart.ts"].action == "add"
+
+
+def test_changed_matching_test_suppresses_only_its_companion_suggestion():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("src/auth.py", additions=5),
+            ChangedFile("tests/test_auth.py", additions=9),
+            ChangedFile("src/billing.py", additions=7),
+        ],
+    )
+    sources = {item.source_path for item in audit.companion_suggestions}
+    assert "src/auth.py" not in sources
+    assert "src/billing.py" in sources
+
+
+def test_lockfile_suggestion_uses_matching_workspace_not_unrelated_package():
+    audit = audit_tree(
+        COMPLETE_TREE + ["packages/other/package-lock.json"],
+        [ChangedFile("packages/web/package.json", additions=2)],
+    )
+    suggestion = audit.companion_suggestions[0]
+    assert suggestion.kind == "lockfile"
+    assert suggestion.suggested_path == "packages/web/package-lock.json"
+    assert suggestion.action == "add"
+
+
+def test_codeowners_routes_lanes_and_reports_partial_coverage():
+    codeowners = """
+* @org/default
+/packages/web/ @org/web
+/services/api/** @org/api @alice
+/services/api/generated/**
+"""
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("packages/web/src/app.ts", additions=4),
+            ChangedFile("services/api/src/auth.py", additions=5),
+            ChangedFile("services/api/generated/client.py", additions=6),
+        ],
+        codeowners_content=codeowners,
+    )
+    lanes = {lane.key: lane for lane in audit.review_lanes}
+    assert lanes["packages/web"].owners == ("@org/web",)
+    assert lanes["packages/web"].unowned_files == 0
+    assert lanes["services/api"].owners == ("@org/api", "@alice")
+    assert lanes["services/api"].unowned_files == 1
+    assert "@org/web" in audit.markdown()
+
+
+def test_codeowners_location_precedence_matches_github():
+    assert find_codeowners_path(["CODEOWNERS", ".github/CODEOWNERS"]) == (
+        ".github/CODEOWNERS"
+    )
+
+
+def test_codeowners_single_star_does_not_cross_directories_but_double_star_does():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("docs/guide.md"),
+            ChangedFile("docs/guides/deep.md"),
+        ],
+        codeowners_content="/docs/* @writers\n",
+    )
+    lane = audit.review_lanes[0]
+    assert lane.owners == ("@writers",)
+    assert lane.unowned_files == 1
+
+    recursive = audit_tree(
+        COMPLETE_TREE,
+        [ChangedFile("docs/guides/deep.md")],
+        codeowners_content="/docs/** @docs-team\n",
+    )
+    assert recursive.review_lanes[0].owners == ("@docs-team",)
+
+
+def test_codeowners_accepts_email_owners_and_ignores_inline_comments():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [ChangedFile("security/policy.md")],
+        codeowners_content="/security/ security@example.com # ask @inactive\n",
+    )
+    assert audit.review_lanes[0].owners == ("security@example.com",)

@@ -2,6 +2,16 @@
 
 All notable changes to QNode are documented here.
 
+## 0.4.0 - 2026-09-12
+
+- Add a pull-request Review Map that groups files into logical ownership lanes.
+- Recognize individual app, package, service, module, library, and component boundaries in monorepos.
+- Rank review lanes by risk severity and churn, with focused signals and representative paths.
+- Route each lane to matching CODEOWNERS handles and expose partially or fully unowned areas.
+- Suggest exact ecosystem-aware companion test paths and workspace-aware dependency lockfiles.
+- Include the Review Map and companion suggestions in GitHub Check Markdown, public reports, and JSON exports.
+- Preserve the privacy model by reading only paths, metadata, and the CODEOWNERS policy—never application source contents and without requesting more permissions.
+
 ## 0.3.0 - 2026-09-07
 
 - Accept public GitHub pull-request URLs and `owner/repository#number` in the scanner.

@@ -1,3 +1,5 @@
+import base64
+
 from qnode_auditor.audit import ChangedFile, audit_tree
 from qnode_auditor.github import GitHubAppClient
 
@@ -58,6 +60,23 @@ def test_pull_request_files_are_converted_to_domain_objects(monkeypatch):
     assert len(files) == 1
     assert files[0].filename == "src/app.py"
     assert files[0].changes == 16
+
+
+def test_file_text_decodes_codeowners_at_requested_ref(monkeypatch):
+    captured = {}
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        captured.update(url=url, params=kwargs["params"])
+        content = base64.b64encode(b"/src/ @org/core\n").decode()
+        return FakeResponse({"encoding": "base64", "content": content})
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    content = GitHubAppClient().file_text(
+        "owner/repo", ".github/CODEOWNERS", "feature/test"
+    )
+    assert content == "/src/ @org/core\n"
+    assert captured["url"].endswith("/contents/.github/CODEOWNERS")
+    assert captured["params"] == {"ref": "feature/test"}
 
 
 def test_pull_request_info_returns_public_report_metadata(monkeypatch):

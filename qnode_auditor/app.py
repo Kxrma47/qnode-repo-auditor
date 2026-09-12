@@ -8,7 +8,7 @@ import time
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 
-from .audit import audit_rules, audit_tree
+from .audit import audit_rules, audit_tree, find_codeowners_path
 from .github import GitHubAppClient
 from .security import verify_signature
 
@@ -62,9 +62,14 @@ def create_app(config: dict | None = None) -> Flask:
         changed_files = (
             client.pull_request_files(repository, pull_number, token) if pull_number else []
         )
+        codeowners_path = find_codeowners_path(snapshot.paths)
+        codeowners_content = (
+            client.file_text(repository, codeowners_path, sha, token) if codeowners_path else ""
+        )
         audit = audit_tree(
             snapshot.paths,
             changed_files,
+            codeowners_content=codeowners_content,
             tree_truncated=snapshot.truncated,
         )
         client.publish_check(repository, sha, audit, token)
@@ -95,7 +100,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.3.0",
+            version="0.4.0",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
         )
@@ -149,9 +154,16 @@ def create_app(config: dict | None = None) -> Flask:
             else:
                 ref = requested_ref or info["default_branch"]
             snapshot = client.tree_snapshot(repository, ref, token)
+            codeowners_path = find_codeowners_path(snapshot.paths)
+            codeowners_content = (
+                client.file_text(repository, codeowners_path, ref, token)
+                if codeowners_path
+                else ""
+            )
             audit = audit_tree(
                 snapshot.paths,
                 changed_files,
+                codeowners_content=codeowners_content,
                 tree_truncated=snapshot.truncated,
             )
         except requests.HTTPError as error:

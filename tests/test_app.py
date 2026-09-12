@@ -29,7 +29,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "webhook_configured": True,
     }
     assert "super-secret-value" not in response.text
@@ -42,6 +42,8 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert b"Audit a repository or pull request" in response.data
     assert b"Kxrma47/qnode-repo-auditor" in response.data
     assert b"qnode-app-icon.jpg" in response.data
+    assert b'id="review-map-section"' in response.data
+    assert b'id="companion-section"' in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
 
@@ -310,7 +312,11 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
 
         def tree_snapshot(self, repository, ref, token=""):
             assert ref == "abc123"
-            return TreeSnapshot(["README.md", "src/service.py"])
+            return TreeSnapshot(["README.md", "src/service.py", ".github/CODEOWNERS"])
+
+        def file_text(self, repository, path, ref, token=""):
+            assert path == ".github/CODEOWNERS"
+            return "/src/ @org/backend\n"
 
     monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
     response = create_app({"TESTING": True}).test_client().get(
@@ -321,4 +327,10 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
     assert response.json["pull_request"]["number"] == 42
     assert response.json["ref"] == "abc123"
     assert response.json["audit"]["risks"][0]["key"] == "source-without-tests"
+    assert response.json["audit"]["review_map"][0]["label"] == "src/"
+    assert response.json["audit"]["review_map"][0]["attention"] == "medium"
+    assert response.json["audit"]["review_map"][0]["owners"] == ["@org/backend"]
+    assert response.json["audit"]["companion_suggestions"][0]["suggested_path"] == (
+        "tests/test_service.py"
+    )
     assert "Engineering readiness" in response.json["audit"]["markdown"]

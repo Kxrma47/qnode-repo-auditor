@@ -39,7 +39,7 @@
   <main>
     <section class="hero shell">
       <div class="hero-copy">
-        <div class="eyebrow"><span>REPOSITORY INTELLIGENCE</span><b>PATH-ONLY ANALYSIS</b></div>
+        <div class="eyebrow"><span>REPOSITORY INTELLIGENCE</span><b>CONTENT-PRIVATE ANALYSIS</b></div>
         <h1>Find the engineering gaps<br><em>before reviewers do.</em></h1>
         <p class="lede">QNode turns repository structure and pull-request metadata into a clear readiness score, concrete evidence, and the next improvements worth making.</p>
         <div class="hero-actions">
@@ -47,7 +47,7 @@
           <a class="secondary-action" href="https://github.com/apps/qnode-repository-auditor">Install the GitHub App</a>
         </div>
         <div class="trust-row" aria-label="Privacy and behavior">
-          <span>◆ No source contents</span>
+          <span>◆ No application source contents</span>
           <span>◆ No data retention</span>
           <span>◆ Advisory, never blocking</span>
         </div>
@@ -72,7 +72,7 @@
       <div class="section-heading">
         <span>01 // PUBLIC SCANNER</span>
         <h2 id="scanner-title">Audit a repository or pull request</h2>
-        <p>Paste an owner/repository name or a public GitHub pull-request URL. QNode reads paths and metadata—not source contents.</p>
+        <p>Paste an owner/repository name or a public GitHub pull-request URL. QNode reads paths, metadata, and CODEOWNERS—not application source.</p>
       </div>
 
       <form id="audit-form" class="audit-form" novalidate>
@@ -132,6 +132,16 @@
           <div class="subheading"><span>PULL-REQUEST SIGNALS</span><b id="risk-count">0 DETECTED</b></div>
           <div id="risks" class="risk-grid"></div>
         </section>
+        <section id="companion-section" class="companion-section" hidden>
+          <div class="subheading"><span>COMPANION CHANGES</span><b id="companion-count">0 SUGGESTED</b></div>
+          <p class="section-note">Exact test and lockfile paths that may need to accompany this pull request.</p>
+          <div id="companions" class="companion-grid"></div>
+        </section>
+        <section id="review-map-section" class="review-map-section" hidden>
+          <div class="subheading"><span>REVIEW MAP</span><b id="lane-count">0 LANES</b></div>
+          <p class="section-note">Changed files grouped into focused lanes, ordered by attention and routed through CODEOWNERS.</p>
+          <div id="review-lanes" class="review-lanes"></div>
+        </section>
         <div class="report-actions">
           <button id="share-report" class="ghost-button" type="button">Copy report link</button>
           <button id="copy-markdown" class="ghost-button" type="button">Copy Markdown</button>
@@ -156,12 +166,12 @@
         <article>
           <span class="card-index">02</span>
           <h3>PR risk signals</h3>
-          <p>Flags untested source changes, unlocked dependency updates, sensitive credential paths, migrations, workflows, and oversized diffs.</p>
+          <p>Flags risk and suggests exact ecosystem-aware test or lockfile paths that may be missing from the change.</p>
         </article>
         <article>
           <span class="card-index">03</span>
-          <h3>Actionable Checks</h3>
-          <p>Publishes annotations and prioritized fixes directly on pull requests, with a one-click re-run after corrections.</p>
+          <h3>Review map</h3>
+          <p>Splits pull requests into logical lanes, surfaces risk and churn, and maps CODEOWNERS coverage for clean reviewer handoff.</p>
         </article>
         <article>
           <span class="card-index">04</span>

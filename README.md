@@ -46,9 +46,19 @@ QNode inspects changed-file metadata and flags:
 - database migrations requiring rollout and rollback planning;
 - unusually large review surfaces.
 
+It also names likely companion files for each changed source file. Suggestions follow the
+repository's ecosystem and layout—for example `tests/users/test_service.py`,
+`src/cart.test.ts`, or `handler_test.go`—and distinguish between adding a missing file and
+updating a test that already exists. Manifest changes receive a workspace-aware lockfile
+suggestion when the corresponding lockfile was not changed.
+
 Signals appear in the GitHub Check summary and as file annotations. The check remains advisory and offers a **Re-run audit** action after changes are pushed.
 
-The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-request URL, making the same path-only risk review available before installing the App.
+### Review map
+
+Every pull-request report also creates a privacy-first review map. Changed files are grouped into logical lanes such as `src/`, `.github/`, or an individual `packages/web/` monorepo package. Lanes are ordered by attention level and churn, and each one shows its file count, line changes, representative paths, relevant risk signals, matching CODEOWNERS, and any ownership gaps. GitHub's last-matching-rule behavior is preserved, including team, user, and email owners. This helps teams delegate a mixed pull request without pretending that one approval covers every area.
+
+The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-request URL, making the same metadata-and-policy review available before installing the App.
 
 ### Share and export
 
@@ -58,9 +68,10 @@ The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-r
 
 ## Privacy model
 
-QNode deliberately analyzes **paths and GitHub metadata only**.
+QNode deliberately analyzes **paths, GitHub metadata, and the repository's CODEOWNERS policy only**.
 
-- It does not download or parse source-file contents.
+- It reads CODEOWNERS solely to map changed paths to reviewer handles.
+- It does not download or parse application source-file contents; all other analysis uses paths and line counts only.
 - It does not store webhook payloads, installation tokens, repository paths, or reports.
 - Public scans are cached in process for five minutes to reduce GitHub API traffic; the cache disappears on restart.
 - Installation tokens are created only for the active webhook request.
@@ -108,7 +119,10 @@ pull_request / requested_action webhook
           ┌──────┴────────┐
           ▼               ▼
  repository tree     changed-file metadata
+          │               │
           └──────┬────────┘
+                 ▼
+       CODEOWNERS policy (if present)
                  ▼
        deterministic audit engine
                  │
@@ -165,6 +179,8 @@ Never place a private key or webhook secret in source control, logs, issues, or 
 - Path presence cannot prove that tests, policies, or workflows are correct.
 - GitHub may truncate very large recursive trees; QNode marks such reports as potentially incomplete.
 - A changed source file without a changed test is a review prompt, not proof that coverage is missing.
+- Suggested test and lockfile paths are deterministic conventions; maintainers should adapt them to project-specific structure.
+- CODEOWNERS routing reports declared handles and coverage, but does not verify team membership or review availability.
 - Public API calls are subject to GitHub rate limits.
 
 ## Support and security

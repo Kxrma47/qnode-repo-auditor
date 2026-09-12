@@ -167,6 +167,36 @@ button.loading .button-loader { display: block; }
 .risk-card p { margin: 11px 0 0; color: var(--muted); font-size: .75rem; line-height: 1.55; }
 .risk-path { display: block; margin-top: 11px; overflow: hidden; color: var(--cyan); font: .66rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .risk-card .risk-fix { color: #b2c5d1; }
+.companion-section { padding: 28px 30px; border-top: 1px solid var(--line); }
+.companion-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.companion-card { min-width: 0; padding: 17px; border: 1px solid rgba(169, 135, 255, .34); background: var(--panel); }
+.companion-card.complete { grid-column: 1 / -1; border-color: rgba(109, 242, 187, .35); }
+.companion-card.complete strong { color: var(--green); }
+.companion-header { display: flex; align-items: center; gap: 10px; }
+.companion-header strong { font-size: .84rem; }
+.companion-action { padding: 4px 6px; border: 1px solid currentColor; color: var(--violet); font: 700 .56rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.companion-path { display: block; margin-top: 12px; overflow: hidden; color: var(--cyan); font: .7rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.companion-card p { margin: 8px 0 0; color: var(--muted); font-size: .72rem; line-height: 1.45; }
+.companion-card .companion-reason { color: #b2c5d1; }
+.review-map-section { padding: 28px 30px; border-top: 1px solid var(--line); }
+.section-note { margin: 12px 0 0; color: var(--muted); font-size: .76rem; }
+.review-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.review-lane { min-width: 0; padding: 17px; border: 1px solid var(--line); background: var(--panel); }
+.review-lane.high { border-color: rgba(255, 126, 149, .5); }
+.review-lane.medium { border-color: rgba(255, 201, 107, .42); }
+.review-lane.low { border-color: rgba(109, 242, 187, .3); }
+.lane-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lane-header strong { overflow: hidden; font: 700 .78rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.lane-attention { flex: 0 0 auto; color: var(--muted); font: 700 .55rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.review-lane.high .lane-attention { color: var(--danger); }
+.review-lane.medium .lane-attention { color: var(--amber); }
+.review-lane.low .lane-attention { color: var(--green); }
+.lane-metrics, .lane-focus { margin: 10px 0 0; color: var(--muted); font-size: .72rem; line-height: 1.45; }
+.lane-focus { color: #b2c5d1; }
+.lane-owners { margin: 10px 0 0; color: var(--green); font: .66rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.lane-owners.incomplete { color: var(--amber); }
+.lane-paths { display: grid; gap: 4px; margin-top: 12px; }
+.lane-paths code { overflow: hidden; color: var(--cyan); font: .63rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 20px 30px; border-top: 1px solid var(--line); }
 .ghost-button { min-width: 0; padding: 10px 12px; border-color: var(--line-bright); background: transparent; color: #a8bdca; font-size: .62rem; }
 .ghost-button:hover { border-color: var(--cyan); color: var(--text); }
@@ -215,8 +245,8 @@ footer a { color: var(--cyan); text-decoration: none; }
   .checks { grid-template-columns: 1fr; }
   .pull-summary { align-items: flex-start; flex-direction: column; padding: 18px 22px; }
   .pull-metrics { flex-wrap: wrap; }
-  .risk-grid { grid-template-columns: 1fr; }
-  .risk-section, .report-actions { padding: 22px; }
+  .risk-grid, .companion-grid, .review-lanes { grid-template-columns: 1fr; }
+  .risk-section, .companion-section, .review-map-section, .report-actions { padding: 22px; }
   #action-message { width: 100%; margin-left: 0; }
   .report-grid > div, .recommendations { padding: 22px; }
   .capabilities { padding-bottom: 80px; }
