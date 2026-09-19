@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reject short production authentication secrets and GitHub App RSA keys below 2048 bits.
+- Validate configured App keys at startup and keep GitHub Check action descriptions within API limits.
 - Run Bandit alongside Ruff and the test suite in CI to catch security-sensitive Python patterns.
 - Bind the direct local Flask entry point to loopback; deployed Gunicorn binding is unchanged.
 - Document public API inputs, outputs, and errors; clarify contribution acceptance requirements.
