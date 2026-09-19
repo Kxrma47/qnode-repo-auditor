@@ -136,9 +136,20 @@ function renderReviewMap(lanes) {
         ? `Route to ${lane.owners.join(", ")}${lane.unowned_files ? ` · ${lane.unowned_files} unowned` : ""}`
         : `No CODEOWNERS match · ${lane.unowned_files} unowned`,
     );
+    const testEvidence = makeElement(
+      "p",
+      `lane-tests${lane.source_files && lane.test_path_matches < lane.source_files ? " incomplete" : ""}`,
+      lane.source_files
+        ? `Changed test-path matches: ${lane.test_path_matches}/${lane.source_files} source files (not a coverage result)`
+        : "No source-file test match needed for this lane",
+    );
+    const questions = makeElement("ul", "lane-questions");
+    (lane.review_questions || []).forEach((question) => {
+      questions.append(makeElement("li", "", question));
+    });
     const paths = makeElement("div", "lane-paths");
     lane.paths.forEach((path) => paths.append(makeElement("code", "", path)));
-    card.append(header, metrics, focus, ownership, paths);
+    card.append(header, metrics, focus, ownership, testEvidence, questions, paths);
     container.append(card);
   });
 }

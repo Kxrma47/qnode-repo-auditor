@@ -205,9 +205,7 @@ def test_codeowners_routes_lanes_and_reports_partial_coverage():
 
 
 def test_codeowners_location_precedence_matches_github():
-    assert find_codeowners_path(["CODEOWNERS", ".github/CODEOWNERS"]) == (
-        ".github/CODEOWNERS"
-    )
+    assert find_codeowners_path(["CODEOWNERS", ".github/CODEOWNERS"]) == (".github/CODEOWNERS")
 
 
 def test_codeowners_single_star_does_not_cross_directories_but_double_star_does():
@@ -238,3 +236,63 @@ def test_codeowners_accepts_email_owners_and_ignores_inline_comments():
         codeowners_content="/security/ security@example.com # ask @inactive\n",
     )
     assert audit.review_lanes[0].owners == ("security@example.com",)
+
+
+def test_review_brief_does_not_count_unrelated_monorepo_tests():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("packages/web/src/cart.ts", additions=8),
+            ChangedFile("packages/web/src/cart.test.ts", additions=12),
+            ChangedFile("services/api/src/auth.py", additions=10),
+        ],
+    )
+    lanes = {lane.key: lane for lane in audit.review_lanes}
+    assert (lanes["packages/web"].test_path_matches, lanes["packages/web"].source_files) == (1, 1)
+    assert (lanes["services/api"].test_path_matches, lanes["services/api"].source_files) == (0, 1)
+    assert lanes["services/api"].attention == "medium"
+    assert any("negative cases" in question for question in lanes["services/api"].review_questions)
+    assert "0/1" in audit.markdown()
+    assert audit.to_dict()["review_map"][0]["review_questions"]
+
+
+def test_review_brief_reports_partial_test_path_matches():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("src/auth.py", additions=3),
+            ChangedFile("tests/test_auth.py", additions=4),
+            ChangedFile("src/billing.py", additions=6),
+        ],
+    )
+    lane = next(lane for lane in audit.review_lanes if lane.key == "src")
+    assert (lane.test_path_matches, lane.source_files) == (1, 2)
+    assert any("1/2 source files" in question for question in lane.review_questions)
+
+
+def test_review_brief_follows_workflow_and_migration_paths_without_source_contents():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile(".github/workflows/release.yml", additions=6),
+            ChangedFile("migrations/003_users.py", additions=7),
+        ],
+    )
+    lanes = {lane.key: lane for lane in audit.review_lanes}
+    assert any("token permissions" in q for q in lanes[".github"].review_questions)
+    assert any("rollback" in q for q in lanes["migrations"].review_questions)
+    assert lanes[".github"].source_files == 0
+    assert lanes[".github"].test_path_matches == 0
+
+
+def test_review_brief_does_not_treat_removed_source_as_needing_new_tests():
+    audit = audit_tree(COMPLETE_TREE, [ChangedFile("src/obsolete.py", status="removed")])
+    lane = audit.review_lanes[0]
+    assert lane.source_files == 0
+    assert lane.test_path_matches == 0
+    assert not any("Matching changed test paths" in q for q in lane.review_questions)
+
+    removed_key = audit_tree(COMPLETE_TREE, [ChangedFile("secrets/old.pem", status="removed")])
+    assert not any(
+        "live secret" in question for question in removed_key.review_lanes[0].review_questions
+    )

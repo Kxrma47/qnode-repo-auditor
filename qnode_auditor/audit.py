@@ -69,6 +69,9 @@ class ReviewLane:
     paths: tuple[str, ...] = ()
     owners: tuple[str, ...] = ()
     unowned_files: int = 0
+    source_files: int = 0
+    test_path_matches: int = 0
+    review_questions: tuple[str, ...] = ()
 
     @property
     def changes(self) -> int:
@@ -179,19 +182,26 @@ class Audit:
                     "",
                     "### Review map",
                     "",
-                    "| Lane | Owners | Attention | Files | Churn | Review focus |",
-                    "|---|---|:---:|---:|---:|---|",
+                    "| Lane | Owners | Attention | Files | Churn | Tests | Review focus |",
+                    "|---|---|:---:|---:|---:|:---:|---|",
                 ]
             )
             for lane in self.review_lanes[:8]:
                 focus = "; ".join(lane.signals) or "Standard review"
                 owners = ", ".join(lane.owners) or "Unassigned"
+                test_match = (
+                    f"{lane.test_path_matches}/{lane.source_files}" if lane.source_files else "n/a"
+                )
                 lines.append(
                     f"| `{lane.label}` | {owners} | {lane.attention.upper()} | {lane.file_count} | "
-                    f"{lane.changes:,} | {focus} |"
+                    f"{lane.changes:,} | {test_match} | {focus} |"
                 )
             if len(self.review_lanes) > 8:
                 lines.append(f"\n_{len(self.review_lanes) - 8} additional review lane(s) in JSON._")
+            lines.extend(["", "#### Focused review questions"])
+            for lane in self.review_lanes[:8]:
+                for question in lane.review_questions:
+                    lines.append(f"- **{lane.label}:** {question}")
 
         if self.tree_truncated:
             lines.extend(
@@ -506,6 +516,62 @@ def _companion_suggestions(
     return tuple(suggestions[:12])
 
 
+def _review_questions(
+    lane_files: list[ChangedFile],
+    sources: list[ChangedFile],
+    matched_tests: int,
+    unowned_files: int,
+    has_codeowners: bool,
+) -> tuple[str, ...]:
+    """Path-derived prompts, not claims about source behavior or test coverage."""
+    paths = [file.filename.lower() for file in lane_files]
+    added_or_modified = [file.filename.lower() for file in lane_files if file.status != "removed"]
+    questions = []
+    if any(path.startswith(".github/workflows/") for path in paths):
+        questions.append(
+            "Were workflow token permissions and untrusted-PR secret exposure checked?"
+        )
+    if any(
+        any(part in {"migration", "migrations"} for part in PurePosixPath(path).parts)
+        for path in added_or_modified
+    ):
+        questions.append(
+            "Is the migration backward-compatible, and is the rollback path documented?"
+        )
+    if any(PurePosixPath(path).name in MANIFESTS for path in paths):
+        questions.append("Was the dependency change reviewed with its corresponding lockfile?")
+    if any(
+        PurePosixPath(path).name in {".env", "id_rsa", "id_ed25519"}
+        or PurePosixPath(path).suffix in {".pem", ".p12", ".pfx", ".key"}
+        for path in added_or_modified
+    ):
+        questions.append("Could any changed credential-like file contain a live secret?")
+    if any(
+        any(
+            part in {"auth", "authentication", "authorization", "permissions"}
+            for part in PurePosixPath(file.filename.lower()).parts
+        )
+        or any(
+            token in PurePosixPath(file.filename.lower()).stem for token in ("auth", "permission")
+        )
+        for file in sources
+    ):
+        questions.append("Were access-control and negative cases covered by a focused test?")
+    if sources and matched_tests < len(sources):
+        questions.append(
+            "Which tests exercise the changed behavior? "
+            "Matching changed test paths were found for "
+            f"{matched_tests}/{len(sources)} source files."
+        )
+    if has_codeowners and unowned_files:
+        questions.append(
+            f"Who will review the {unowned_files} changed file(s) without a CODEOWNERS match?"
+        )
+    if not questions:
+        questions.append("What behavior changed here, and how was it verified?")
+    return tuple(questions[:4])
+
+
 def _review_map(
     files: tuple[ChangedFile, ...],
     risks: tuple[RiskSignal, ...],
@@ -521,16 +587,34 @@ def _review_map(
             lane_signals.setdefault(_review_lane_key(risk.path), []).append(risk)
 
     owner_rules = _codeowners_rules(codeowners_content)
+    changed_paths = {file.filename for file in files if file.status != "removed"}
     lanes = []
     for key, lane_files in grouped.items():
         signals = lane_signals.get(key, [])
         file_owners = [_owners_for_path(file.filename, owner_rules) for file in lane_files]
         owners = tuple(dict.fromkeys(owner for group in file_owners for owner in group))
+        unowned_files = sum(not group for group in file_owners)
+        sources = [
+            file
+            for file in lane_files
+            if file.status != "removed"
+            and PurePosixPath(file.filename).suffix.lower() in SOURCE_SUFFIXES
+            and not _is_test_path(file.filename)
+        ]
+        matched = sum(
+            any(candidate in changed_paths for candidate in _candidate_test_paths(file.filename))
+            for file in sources
+        )
+        questions = _review_questions(
+            lane_files, sources, matched, unowned_files, bool(owner_rules)
+        )
         attention = max(
             (risk.severity for risk in signals),
             key=lambda severity: SEVERITY_RANK[severity],
             default="routine",
         )
+        if sources and matched < len(sources) and attention == "routine":
+            attention = "medium"
         lanes.append(
             ReviewLane(
                 key=key,
@@ -542,7 +626,10 @@ def _review_map(
                 signals=tuple(dict.fromkeys(risk.title for risk in signals)),
                 paths=tuple(file.filename for file in lane_files[:5]),
                 owners=owners,
-                unowned_files=sum(not group for group in file_owners),
+                unowned_files=unowned_files,
+                source_files=len(sources),
+                test_path_matches=matched,
+                review_questions=questions,
             )
         )
 

@@ -195,6 +195,10 @@ button.loading .button-loader { display: block; }
 .lane-focus { color: #b2c5d1; }
 .lane-owners { margin: 10px 0 0; color: var(--green); font: .66rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .lane-owners.incomplete { color: var(--amber); }
+.lane-tests { margin: 9px 0 0; color: var(--green); font: .66rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.lane-tests.incomplete { color: var(--amber); }
+.lane-questions { margin: 12px 0 0; padding-left: 18px; color: #b2c5d1; font-size: .72rem; line-height: 1.5; }
+.lane-questions li + li { margin-top: 5px; }
 .lane-paths { display: grid; gap: 4px; margin-top: 12px; }
 .lane-paths code { overflow: hidden; color: var(--cyan); font: .63rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 20px 30px; border-top: 1px solid var(--line); }

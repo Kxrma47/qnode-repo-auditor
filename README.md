@@ -58,6 +58,8 @@ Signals appear in the GitHub Check summary and as file annotations. The check re
 
 Every pull-request report also creates a privacy-first review map. Changed files are grouped into logical lanes such as `src/`, `.github/`, or an individual `packages/web/` monorepo package. Lanes are ordered by attention level and churn, and each one shows its file count, line changes, representative paths, relevant risk signals, matching CODEOWNERS, and any ownership gaps. GitHub's last-matching-rule behavior is preserved, including team, user, and email owners. This helps teams delegate a mixed pull request without pretending that one approval covers every area.
 
+Each lane now includes a focused, path-derived review brief: questions about workflow permissions, migrations, dependencies, credential-like files, access control, test evidence, or ownership as applicable. A test-path match counter shows how many changed source files have a conventionally matching test file changed in the PR; it is **not** a coverage result. Tests changed in another monorepo package do not mask a gap in this package. Briefs appear in the website, JSON, Markdown, and GitHub Check without reading source contents or adding permissions.
+
 The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-request URL, making the same metadata-and-policy review available before installing the App.
 
 ### Share and export
@@ -179,6 +181,7 @@ Never place a private key or webhook secret in source control, logs, issues, or 
 - Path presence cannot prove that tests, policies, or workflows are correct.
 - GitHub may truncate very large recursive trees; QNode marks such reports as potentially incomplete.
 - A changed source file without a changed test is a review prompt, not proof that coverage is missing.
+- Test-path matches use filename conventions and do not prove that tests cover changed behavior; custom integration suites may not match.
 - Suggested test and lockfile paths are deterministic conventions; maintainers should adapt them to project-specific structure.
 - CODEOWNERS routing reports declared handles and coverage, but does not verify team membership or review availability.
 - Public API calls are subject to GitHub rate limits.

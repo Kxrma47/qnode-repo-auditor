@@ -29,7 +29,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.4.0",
+        "version": "0.5.0",
         "webhook_configured": True,
     }
     assert "super-secret-value" not in response.text

@@ -2,6 +2,13 @@
 
 All notable changes to QNode are documented here.
 
+## 0.5.0 - 2026-09-19
+
+- Add path-derived, lane-specific review questions for workflows, migrations, dependencies, credential-like paths, access control, tests, and ownership.
+- Count changed test-path matches per source file within each review lane, so unrelated monorepo tests do not hide local test gaps.
+- Show the review brief in the public scanner, JSON export, Markdown, and GitHub Check without additional permissions or reading source contents.
+- Keep test-path matches advisory; they do not claim behavior coverage or enforce a merge gate.
+
 ## 0.4.0 - 2026-09-12
 
 - Add a pull-request Review Map that groups files into logical ownership lanes.
