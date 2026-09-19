@@ -21,6 +21,10 @@ The public scanner evaluates a public GitHub repository **or pull-request URL** 
 
 Have a real review case QNode missed? [Tell us what signal you need](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6). Include a public example and expected result if you can; [Issues](https://github.com/Kxrma47/qnode-repo-auditor/issues) are best for reproducible bugs.
 
+Project policies: [contributing](CONTRIBUTING.md) · [governance](GOVERNANCE.md) ·
+[code of conduct](CODE_OF_CONDUCT.md) · [security](SECURITY.md) ·
+[architecture](docs/architecture.md) · [roadmap](docs/roadmap.md).
+
 ## What it reports
 
 ### Repository readiness

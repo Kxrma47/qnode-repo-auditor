@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "scripts": {
+    "check:js": "node --check qnode_auditor/static/app.js",
+    "lint:js": "eslint qnode_auditor/static/app.js --max-warnings 0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
+    "globals": "17.12.0"
+  }
+}
