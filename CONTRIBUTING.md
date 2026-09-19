@@ -22,3 +22,8 @@ pytest --cov=qnode_auditor --cov-report=term-missing
 ```
 
 Add tests for every rule, API response, and webhook behavior. Update the README and changelog when user-visible behavior changes.
+
+Before proposing a pull request, run the three checks above and describe the behavior change,
+test evidence, and any privacy or GitHub-permission impact. Keep changes focused and avoid
+committing credentials, webhook payloads, or private repository data. A passing local check
+does not replace CI or review.

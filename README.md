@@ -115,6 +115,8 @@ curl 'https://qnode-repo-auditor.onrender.com/api/rules'
 
 Operational readiness is available at `GET /health`.
 
+See the [API reference](docs/api.md) for request parameters, response fields, and error codes.
+
 ## GitHub App flow
 
 ```text

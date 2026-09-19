@@ -4,6 +4,8 @@
 
 - Run Bandit alongside Ruff and the test suite in CI to catch security-sensitive Python patterns.
 - Bind the direct local Flask entry point to loopback; deployed Gunicorn binding is unchanged.
+- Document public API inputs, outputs, and errors; clarify contribution acceptance requirements.
+- Align the package's exported version with its declared and health-check version.
 
 ## 0.7.1 - 2026-09-19
 

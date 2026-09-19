@@ -2,9 +2,11 @@ import hashlib
 import hmac
 import json
 from base64 import b64encode
+from importlib.metadata import version
 
 import requests
 
+from qnode_auditor import __version__
 from qnode_auditor.app import create_app
 from qnode_auditor.audit import ChangedFile
 from qnode_auditor.github import TreeSnapshot
@@ -38,6 +40,8 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "visitor_metrics_configured": False,
     }
     assert "super-secret-value" not in response.text
+    assert response.json["version"] == __version__
+    assert __version__ == version("qnode-repo-auditor")
 
 
 def test_owner_metrics_fail_closed_without_secret():
