@@ -6,7 +6,8 @@ Register a GitHub App with:
 
 - **Homepage URL:** your deployed service root
 - **Webhook URL:** `https://YOUR-HOST/webhook`
-- **Webhook secret:** a generated high-entropy value
+- **Webhook secret:** at least 32 random bytes, for example 64 hex characters generated with
+  `python -c 'import secrets; print(secrets.token_hex(32))'`
 - **Expire user authorization tokens:** irrelevant; QNode does not request user authorization
 
 Repository permissions:
@@ -29,6 +30,10 @@ Generate a private key after registration. Store the PEM outside the repository 
 
 - `GITHUB_PRIVATE_KEY` for a deployment secret; or
 - `GITHUB_PRIVATE_KEY_PATH` for local development.
+
+QNode refuses RSA private keys below 2048 bits. Use a GitHub-generated App key; do not
+replace it with a weaker locally generated key. Production also refuses a configured webhook
+secret or owner-dashboard token shorter than 32 UTF-8 bytes.
 
 Set `GITHUB_APP_ID` to the App ID. `GITHUB_INSTALLATION_ID` is only a fallback for repository-level webhook configurations whose payload does not include an installation object.
 

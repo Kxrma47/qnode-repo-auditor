@@ -9,6 +9,8 @@ from urllib.parse import quote
 
 import jwt
 import requests
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from .audit import ChangedFile
 
@@ -69,10 +71,18 @@ class GitHubAppClient:
             raise ValueError(
                 "GitHub App ID and private key are required for installation authentication"
             )
+        try:
+            key = serialization.load_pem_private_key(
+                self.private_key.encode("utf-8"), password=None
+            )
+        except ValueError as error:
+            raise ValueError("GitHub App private key must be a valid RSA key") from error
+        if not isinstance(key, rsa.RSAPrivateKey) or key.key_size < 2048:
+            raise ValueError("GitHub App RSA private key must be at least 2048 bits")
         now = int(time.time())
         return jwt.encode(
             {"iat": now - 60, "exp": now + 9 * 60, "iss": self.app_id},
-            self.private_key,
+            key,
             algorithm="RS256",
         )
 
