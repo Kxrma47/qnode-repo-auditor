@@ -18,7 +18,7 @@ source .venv/bin/activate
 python -m pip install -e '.[dev]'
 ruff check .
 bandit -q -r qnode_auditor -ll
-pytest --cov=qnode_auditor --cov-report=term-missing
+pytest --cov=qnode_auditor --cov-branch --cov-report=term-missing
 ```
 
 Add tests for every rule, API response, and webhook behavior. Update the README and changelog when user-visible behavior changes.

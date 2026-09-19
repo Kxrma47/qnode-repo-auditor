@@ -22,4 +22,4 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - run: ruff check .
       - run: bandit -q -r qnode_auditor -ll
-      - run: pytest --cov=qnode_auditor --cov-report=term-missing --cov-fail-under=85
+      - run: pytest --cov=qnode_auditor --cov-branch --cov-report=term-missing --cov-fail-under=85
