@@ -8,6 +8,8 @@
 
 [Try the scanner](https://qnode-repo-auditor.onrender.com) · [Install the GitHub App](https://github.com/apps/qnode-repository-auditor) · [Suggest a feature](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6) · [Report a bug](https://github.com/Kxrma47/qnode-repo-auditor/issues)
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14715/badge)](https://www.bestpractices.dev/projects/14715)
+
 </div>
 
 Paste a public `owner/repo` name or GitHub pull-request URL into the [scanner](https://qnode-repo-auditor.onrender.com). No installation or sign-in is needed to try it. QNode answers two practical questions:
