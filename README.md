@@ -187,6 +187,12 @@ Production identifiers:
 - `GITHUB_INSTALLATION_ID` (fallback for repository-level webhook setups)
 
 Never place a private key or webhook secret in source control, logs, issues, or browser-visible configuration.
+Production rejects configured webhook and owner-dashboard secrets shorter than 32 UTF-8 bytes,
+and rejects GitHub App RSA private keys below 2048 bits. Generate each secret independently
+with a cryptographically secure generator (for example, `python -c 'import secrets; print(secrets.token_hex(32))'`),
+and set the same webhook secret in the GitHub App and the hosting environment. A long but
+predictable string is not a secure substitute. Check existing production values before deploying
+this validation; otherwise the service will fail startup rather than accept a weak secret.
 
 ### Private owner metrics
 

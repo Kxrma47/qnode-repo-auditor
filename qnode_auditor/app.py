@@ -23,7 +23,7 @@ from .audit import (
 )
 from .github import MAX_PR_FILES, GitHubAppClient, TreeSnapshot, compare_trees
 from .policy import POLICY_PATH, AuditPolicy, parse_policy
-from .security import verify_signature
+from .security import validate_secret_strength, verify_signature
 
 LOGGER = logging.getLogger("qnode")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
@@ -50,6 +50,9 @@ def create_app(config: dict | None = None) -> Flask:
     )
     if config:
         app.config.update(config)
+    if not app.config["TESTING"]:
+        validate_secret_strength("GITHUB_WEBHOOK_SECRET", app.config["GITHUB_WEBHOOK_SECRET"])
+        validate_secret_strength("OWNER_METRICS_TOKEN", app.config["OWNER_METRICS_TOKEN"])
     visitor_store = (
         VisitorStore(app.config["VISITOR_METRICS_DB"]) if app.config["VISITOR_METRICS_DB"] else None
     )

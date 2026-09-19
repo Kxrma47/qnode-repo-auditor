@@ -1,6 +1,8 @@
 import base64
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from qnode_auditor.audit import ChangedFile, audit_tree
 from qnode_auditor.github import GitHubAppClient, TreeSnapshot, compare_trees
@@ -18,6 +20,22 @@ class FakeResponse:
 
     def json(self):
         return self.data
+
+
+@pytest.mark.parametrize("bits", [1024, 2048])
+def test_app_jwt_rejects_undersized_rsa_key(bits):
+    key = rsa.generate_private_key(public_exponent=65537, key_size=bits)
+    pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    client = GitHubAppClient(app_id="12345", private_key=pem)
+    if bits == 1024:
+        with pytest.raises(ValueError, match="at least 2048 bits"):
+            client._app_jwt()
+    else:
+        assert client._app_jwt()
 
 
 def test_app_installation_count_uses_app_auth_and_validates_response(monkeypatch):
