@@ -53,6 +53,12 @@ def create_app(config: dict | None = None) -> Flask:
     if not app.config["TESTING"]:
         validate_secret_strength("GITHUB_WEBHOOK_SECRET", app.config["GITHUB_WEBHOOK_SECRET"])
         validate_secret_strength("OWNER_METRICS_TOKEN", app.config["OWNER_METRICS_TOKEN"])
+        if app.config["GITHUB_PRIVATE_KEY"] or app.config["GITHUB_PRIVATE_KEY_PATH"]:
+            GitHubAppClient(
+                app_id=app.config["GITHUB_APP_ID"],
+                private_key=app.config["GITHUB_PRIVATE_KEY"],
+                private_key_path=app.config["GITHUB_PRIVATE_KEY_PATH"],
+            )._app_jwt()
     visitor_store = (
         VisitorStore(app.config["VISITOR_METRICS_DB"]) if app.config["VISITOR_METRICS_DB"] else None
     )

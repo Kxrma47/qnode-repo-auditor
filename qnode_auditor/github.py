@@ -271,7 +271,7 @@ class GitHubAppClient:
                 "actions": [
                     {
                         "label": "Re-run audit",
-                        "description": "Run QNode again against the current commit",
+                        "description": "Run QNode for this commit",
                         "identifier": "rerun",
                     }
                 ],
