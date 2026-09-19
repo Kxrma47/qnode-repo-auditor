@@ -23,3 +23,15 @@ jobs:
       - run: ruff check .
       - run: bandit -q -r qnode_auditor -ll
       - run: pytest --cov=qnode_auditor --cov-branch --cov-report=term-missing --cov-fail-under=85
+
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run check:js
+      - run: npm run lint:js

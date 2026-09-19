@@ -16,10 +16,23 @@ Thank you for improving QNode. Open an issue before a substantial behavioral or 
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
+npm ci
 ruff check .
 bandit -q -r qnode_auditor -ll
 pytest --cov=qnode_auditor --cov-branch --cov-report=term-missing
+npm run check:js
+npm run lint:js
 ```
+
+Python contributions follow the repository's Ruff configuration in `pyproject.toml`
+(`E`, `F`, `I`, `UP`, `B`, and `SIM` rules). Browser JavaScript follows the ESLint recommended
+rules in `eslint.config.mjs`. CI enforces both linters with zero warnings. Keep comments
+and public names descriptive; avoid suppressing a lint rule without explaining why.
+
+Major new functionality must include automated tests. Bug fixes should include a
+regression test reproducing the previous failure whenever practical; explain in the pull
+request when a reproducible test is not possible. Do not weaken an existing test simply
+to make a change pass.
 
 Add tests for every rule, API response, and webhook behavior. Update the README and changelog when user-visible behavior changes.
 
