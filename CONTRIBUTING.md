@@ -17,6 +17,7 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
 ruff check .
+bandit -q -r qnode_auditor -ll
 pytest --cov=qnode_auditor --cov-report=term-missing
 ```
 

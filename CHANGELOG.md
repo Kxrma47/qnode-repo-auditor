@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Run Bandit alongside Ruff and the test suite in CI to catch security-sensitive Python patterns.
+- Bind the direct local Flask entry point to loopback; deployed Gunicorn binding is unchanged.
+
 ## 0.7.1 - 2026-09-19
 
 - Add optional local SQLite website usage counting, visible only on the authenticated owner page.
