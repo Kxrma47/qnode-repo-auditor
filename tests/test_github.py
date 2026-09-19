@@ -221,6 +221,7 @@ def test_check_run_contains_actionable_output_annotations_and_rerun(monkeypatch)
     payload = captured["payload"]
     assert payload["name"] == "QNode repository intelligence"
     assert payload["actions"][0]["identifier"] == "rerun"
+    assert len(payload["actions"][0]["description"]) <= 40
     assert payload["output"]["title"].startswith("Readiness 12/100")
     assert payload["output"]["annotations"][0]["path"] == "src/app.py"
     assert captured["headers"]["Authorization"] == "Bearer token"
