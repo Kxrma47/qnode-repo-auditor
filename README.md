@@ -193,6 +193,8 @@ with a cryptographically secure generator (for example, `python -c 'import secre
 and set the same webhook secret in the GitHub App and the hosting environment. A long but
 predictable string is not a secure substitute. Check existing production values before deploying
 this validation; otherwise the service will fail startup rather than accept a weak secret.
+When a GitHub App private key is configured, startup also parses it and verifies its size,
+so a malformed key cannot leave an apparently healthy service with failing PR webhooks.
 
 ### Private owner metrics
 
