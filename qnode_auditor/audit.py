@@ -5,6 +5,8 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import PurePosixPath
 
+from .policy import AuditPolicy
+
 
 @dataclass(frozen=True)
 class Check:
@@ -40,6 +42,7 @@ class RiskSignal:
     detail: str
     path: str | None = None
     recommendation: str = ""
+    annotate: bool = True
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -72,6 +75,8 @@ class ReviewLane:
     source_files: int = 0
     test_path_matches: int = 0
     review_questions: tuple[str, ...] = ()
+    test_targets: tuple[str, ...] = ()
+    configured_jobs: tuple[str, ...] = ()
 
     @property
     def changes(self) -> int:
@@ -82,6 +87,26 @@ class ReviewLane:
 
 
 @dataclass(frozen=True)
+class ReviewDelta:
+    baseline_sha: str
+    reviewed_at: str
+    changed_paths: tuple[str, ...]
+    changed_path_count: int
+    new_signals: tuple[RiskSignal, ...]
+    resolved_signals: tuple[RiskSignal, ...]
+
+    def to_dict(self) -> dict:
+        return {
+            "baseline_sha": self.baseline_sha,
+            "reviewed_at": self.reviewed_at,
+            "changed_paths": self.changed_paths,
+            "changed_path_count": self.changed_path_count,
+            "new_signals": [signal.to_dict() for signal in self.new_signals],
+            "resolved_signals": [signal.to_dict() for signal in self.resolved_signals],
+        }
+
+
+@dataclass(frozen=True)
 class Audit:
     checks: tuple[Check, ...]
     risks: tuple[RiskSignal, ...] = ()
@@ -89,6 +114,9 @@ class Audit:
     companion_suggestions: tuple[CompanionSuggestion, ...] = ()
     tree_truncated: bool = False
     files_truncated: bool = False
+    ignored_files: int = 0
+    policy_warning: str = ""
+    review_delta: ReviewDelta | None = None
 
     @property
     def score(self) -> int:
@@ -124,7 +152,7 @@ class Audit:
     def annotations(self) -> list[dict]:
         annotations = []
         for risk in self.risks[:50]:
-            if not risk.path:
+            if not risk.path or not risk.annotate:
                 continue
             annotations.append(
                 {
@@ -169,6 +197,23 @@ class Audit:
             for risk in self.risks:
                 lines.append(f"- **{risk.severity.upper()} · {risk.title}:** {risk.detail}")
 
+        if self.review_delta:
+            delta = self.review_delta
+            lines.extend(
+                [
+                    "",
+                    "### Since the latest submitted review",
+                    f"Compared with `{delta.baseline_sha[:12]}` ({delta.reviewed_at}).",
+                    f"{delta.changed_path_count} path(s) changed since that review; "
+                    f"{len(delta.new_signals)} new and {len(delta.resolved_signals)} resolved "
+                    "QNode signals in the PR-wide report.",
+                ]
+            )
+            for signal in delta.new_signals[:8]:
+                lines.append(f"- **New:** {signal.title} (`{signal.path or 'PR'}`)")
+            for signal in delta.resolved_signals[:8]:
+                lines.append(f"- **Resolved:** {signal.title} (`{signal.path or 'PR'}`)")
+
         if self.companion_suggestions:
             lines.extend(["", "### Suggested companion changes"])
             for suggestion in self.companion_suggestions[:8]:
@@ -183,8 +228,9 @@ class Audit:
                     "",
                     "### Review map",
                     "",
-                    "| Lane | Owners | Attention | Files | Churn | Tests | Review focus |",
-                    "|---|---|:---:|---:|---:|:---:|---|",
+                    "| Lane | Owners | Attention | Files | Churn | Tests | "
+                    "Configured jobs | Review focus |",
+                    "|---|---|:---:|---:|---:|:---:|---|---|",
                 ]
             )
             for lane in self.review_lanes[:8]:
@@ -195,14 +241,28 @@ class Audit:
                 )
                 lines.append(
                     f"| `{lane.label}` | {owners} | {lane.attention.upper()} | {lane.file_count} | "
-                    f"{lane.changes:,} | {test_match} | {focus} |"
+                    f"{lane.changes:,} | {test_match} | "
+                    f"{', '.join(lane.configured_jobs) or 'None'} | {focus} |"
                 )
             if len(self.review_lanes) > 8:
                 lines.append(f"\n_{len(self.review_lanes) - 8} additional review lane(s) in JSON._")
             lines.extend(["", "#### Focused review questions"])
             for lane in self.review_lanes[:8]:
+                if lane.test_targets:
+                    lines.append(
+                        f"- **{lane.label} candidate tests:** "
+                        + ", ".join(f"`{path}`" for path in lane.test_targets)
+                    )
                 for question in lane.review_questions:
                     lines.append(f"- **{lane.label}:** {question}")
+
+        if self.policy_warning:
+            lines.extend(["", f"> {self.policy_warning}"])
+        elif self.ignored_files:
+            lines.extend(
+                ["", f"_{self.ignored_files} changed file(s) excluded from heuristic warnings "
+                 "by .qnode.json; credential-like and critical paths are never suppressed._"]
+            )
 
         if self.tree_truncated:
             lines.extend(
@@ -219,7 +279,8 @@ class Audit:
         lines.extend(
             [
                 "",
-                "_Advisory only. QNode reads repository metadata, paths, and CODEOWNERS policy; "
+                "_Advisory only. QNode reads paths, metadata, CODEOWNERS, "
+                "and optional .qnode.json; "
                 "never application source contents; and never blocks a pull request._",
             ]
         )
@@ -234,6 +295,9 @@ class Audit:
             "total": len(self.checks),
             "tree_truncated": self.tree_truncated,
             "files_truncated": self.files_truncated,
+            "ignored_files": self.ignored_files,
+            "policy_warning": self.policy_warning,
+            "review_delta": self.review_delta.to_dict() if self.review_delta else None,
             "checks": [check.to_dict() for check in self.checks],
             "risks": [risk.to_dict() for risk in self.risks],
             "review_map": [lane.to_dict() for lane in self.review_lanes],
@@ -451,6 +515,7 @@ def _candidate_test_paths(source_path: str) -> tuple[str, ...]:
         return (
             joined("tests", inner_parent, f"test_{stem}.py"),
             joined(parent, f"test_{stem}.py"),
+            joined("tests", f"test_{stem}.py"),
         )
     if suffix in {".js", ".jsx", ".ts", ".tsx"}:
         return (
@@ -590,7 +655,11 @@ def _review_map(
     files: tuple[ChangedFile, ...],
     risks: tuple[RiskSignal, ...],
     codeowners_content: str = "",
+    paths: set[str] | None = None,
+    policy: AuditPolicy | None = None,
 ) -> tuple[ReviewLane, ...]:
+    paths = paths or set()
+    policy = policy or AuditPolicy()
     grouped: dict[str, list[ChangedFile]] = {}
     for file in files:
         grouped.setdefault(_review_lane_key(file.filename), []).append(file)
@@ -602,6 +671,10 @@ def _review_map(
 
     owner_rules = _codeowners_rules(codeowners_content)
     changed_paths = {file.filename for file in files if file.status != "removed"}
+    test_paths_by_lane: dict[str, list[str]] = {}
+    for path in sorted(paths):
+        if _is_test_path(path):
+            test_paths_by_lane.setdefault(_review_lane_key(path), []).append(path)
     lanes = []
     for key, lane_files in grouped.items():
         signals = lane_signals.get(key, [])
@@ -614,13 +687,17 @@ def _review_map(
             if file.status != "removed"
             and PurePosixPath(file.filename).suffix.lower() in SOURCE_SUFFIXES
             and not _is_test_path(file.filename)
+            and not policy.ignored(file.filename)
         ]
         matched = sum(
             any(candidate in changed_paths for candidate in _candidate_test_paths(file.filename))
             for file in sources
         )
-        questions = _review_questions(
-            lane_files, sources, matched, unowned_files, bool(owner_rules)
+        active_lane_files = [file for file in lane_files if not policy.ignored(file.filename)]
+        questions = (
+            _review_questions(active_lane_files, sources, matched, unowned_files, bool(owner_rules))
+            if active_lane_files
+            else ("Heuristic warnings for this lane are suppressed by .qnode.json.",)
         )
         attention = max(
             (risk.severity for risk in signals),
@@ -629,6 +706,23 @@ def _review_map(
         )
         if sources and matched < len(sources) and attention == "routine":
             attention = "medium"
+        targets = tuple(
+            dict.fromkeys(
+                candidate
+                for file in sources
+                for candidate in _candidate_test_paths(file.filename)
+                if candidate in paths
+            )
+        )[:5]
+        if not targets:
+            targets = tuple(test_paths_by_lane.get(key, ())[:3])
+        if any(policy.critical(file.filename) for file in lane_files):
+            attention = "high"
+            questions = (
+                "A changed path is marked critical in .qnode.json. "
+                "Which downstream behavior and rollback path were checked?",
+                *questions,
+            )[:4]
         lanes.append(
             ReviewLane(
                 key=key,
@@ -644,6 +738,8 @@ def _review_map(
                 source_files=len(sources),
                 test_path_matches=matched,
                 review_questions=questions,
+                test_targets=targets,
+                configured_jobs=policy.jobs_for([file.filename for file in lane_files]),
             )
         )
 
@@ -655,24 +751,29 @@ def _review_map(
     )
 
 
-def _pull_request_risks(files: tuple[ChangedFile, ...]) -> tuple[RiskSignal, ...]:
+def _pull_request_risks(
+    files: tuple[ChangedFile, ...], policy: AuditPolicy | None = None
+) -> tuple[RiskSignal, ...]:
     if not files:
         return ()
+
+    policy = policy or AuditPolicy()
+    active_files = tuple(file for file in files if not policy.ignored(file.filename))
 
     def annotation_path(file: ChangedFile) -> str | None:
         return None if file.status == "removed" else file.filename
 
     source_files = [
         file
-        for file in files
+        for file in active_files
         if file.status != "removed"
         and PurePosixPath(file.filename).suffix.lower() in SOURCE_SUFFIXES
     ]
-    test_files = [file for file in files if _is_test_path(file.filename)]
-    changed_paths = {file.filename for file in files if file.status != "removed"}
+    test_files = [file for file in active_files if _is_test_path(file.filename)]
+    changed_paths = {file.filename for file in active_files if file.status != "removed"}
     manifest_changes = [
         file
-        for file in files
+        for file in active_files
         if file.status != "removed"
         and PurePosixPath(file.filename.lower()).name in MANIFESTS
         and not any(path in changed_paths for path in _lockfile_candidates(file.filename))
@@ -704,7 +805,8 @@ def _pull_request_risks(files: tuple[ChangedFile, ...]) -> tuple[RiskSignal, ...
         )
 
     workflow = next(
-        (file for file in files if file.filename.lower().startswith(".github/workflows/")), None
+        (file for file in active_files if file.filename.lower().startswith(".github/workflows/")),
+        None,
     )
     if workflow:
         risks.append(
@@ -744,15 +846,16 @@ def _pull_request_risks(files: tuple[ChangedFile, ...]) -> tuple[RiskSignal, ...
             )
         )
 
-    total_changes = sum(file.changes for file in files)
+    total_changes = sum(file.changes for file in active_files)
     if total_changes >= 800:
-        largest = max(files, key=lambda file: file.changes)
+        largest = max(active_files, key=lambda file: file.changes)
         risks.append(
             RiskSignal(
                 "large-change",
                 "medium",
                 "Large review surface",
-                f"This pull request changes {total_changes:,} lines across {len(files)} files.",
+                f"This pull request changes {total_changes:,} lines across "
+                f"{len(active_files)} non-ignored files.",
                 annotation_path(largest),
                 "Consider splitting unrelated work and highlight generated or mechanical changes.",
             )
@@ -761,7 +864,7 @@ def _pull_request_risks(files: tuple[ChangedFile, ...]) -> tuple[RiskSignal, ...
     migration = next(
         (
             file
-            for file in files
+            for file in active_files
             if any(
                 part in {"migration", "migrations"}
                 for part in PurePosixPath(file.filename.lower()).parts
@@ -781,6 +884,31 @@ def _pull_request_risks(files: tuple[ChangedFile, ...]) -> tuple[RiskSignal, ...
             )
         )
 
+    critical_files = [file for file in files if policy.critical(file.filename)]
+    for file in critical_files[:20]:
+        risks.append(
+            RiskSignal(
+                "critical-path",
+                "high",
+                "Configured critical path changed",
+                f"{file.filename} matches a critical path declared in .qnode.json; "
+                f"its PR status is {file.status}.",
+                file.filename,
+                "Ask the responsible reviewer to check downstream impact, test evidence, "
+                "and rollback plans.",
+                annotate=file.status != "removed",
+            )
+        )
+    if len(critical_files) > 20:
+        risks.append(
+            RiskSignal(
+                "critical-path-overflow",
+                "high",
+                "Additional critical paths changed",
+                f"{len(critical_files) - 20} additional configured critical paths changed.",
+            )
+        )
+
     return tuple(risks)
 
 
@@ -791,9 +919,11 @@ def audit_tree(
     codeowners_content: str = "",
     tree_truncated: bool = False,
     files_truncated: bool = False,
+    policy: AuditPolicy | None = None,
 ) -> Audit:
     """Evaluate safeguards using paths, change metadata, and optional CODEOWNERS policy."""
     paths = {str(PurePosixPath(path)) for path in tree_paths if path}
+    policy = policy or AuditPolicy()
 
     readme = _root_file(paths, {"readme", "readme.md", "readme.rst", "readme.txt"})
     license_file = _first(
@@ -935,15 +1065,19 @@ def audit_tree(
     )
 
     changed_files = tuple(changed_files)
-    risks = _pull_request_risks(changed_files)
-    companion_suggestions = _companion_suggestions(paths, changed_files)
+    risks = _pull_request_risks(changed_files, policy)
+    companion_suggestions = _companion_suggestions(
+        paths, tuple(file for file in changed_files if not policy.ignored(file.filename))
+    )
     return Audit(
         checks=checks,
         risks=risks,
-        review_lanes=_review_map(changed_files, risks, codeowners_content),
+        review_lanes=_review_map(changed_files, risks, codeowners_content, paths, policy),
         companion_suggestions=companion_suggestions,
         tree_truncated=tree_truncated,
         files_truncated=files_truncated,
+        ignored_files=sum(policy.ignored(file.filename) for file in changed_files),
+        policy_warning=policy.warning,
     )
 
 
@@ -958,3 +1092,30 @@ def audit_rules() -> list[dict]:
         }
         for check in audit_tree([]).checks
     ]
+
+
+def compare_review_signals(
+    baseline: Audit,
+    current: Audit,
+    *,
+    baseline_sha: str,
+    reviewed_at: str,
+    changed_paths: Iterable[str],
+) -> ReviewDelta:
+    """Diff path-scoped and PR-wide advisory signals, not source-code behavior."""
+    def identity(signal: RiskSignal) -> tuple[str, str | None]:
+        return signal.key, signal.path if signal.key == "critical-path" else None
+
+    # Blob IDs reveal changed paths, but not line counts. Churn-based signals
+    # cannot be compared fairly with this privacy-preserving baseline.
+    before = {identity(signal): signal for signal in baseline.risks if signal.key != "large-change"}
+    after = {identity(signal): signal for signal in current.risks if signal.key != "large-change"}
+    unique_paths = tuple(dict.fromkeys(changed_paths))
+    return ReviewDelta(
+        baseline_sha=baseline_sha,
+        reviewed_at=reviewed_at,
+        changed_paths=unique_paths[:100],
+        changed_path_count=len(unique_paths),
+        new_signals=tuple(signal for key, signal in after.items() if key not in before),
+        resolved_signals=tuple(signal for key, signal in before.items() if key not in after),
+    )

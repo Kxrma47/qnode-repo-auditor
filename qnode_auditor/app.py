@@ -4,13 +4,21 @@ import logging
 import os
 import re
 import time
+from dataclasses import replace
 from hmac import compare_digest
 
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 
-from .audit import audit_rules, audit_tree, find_codeowners_path
-from .github import MAX_PR_FILES, GitHubAppClient
+from .audit import (
+    ReviewDelta,
+    audit_rules,
+    audit_tree,
+    compare_review_signals,
+    find_codeowners_path,
+)
+from .github import MAX_PR_FILES, GitHubAppClient, TreeSnapshot, compare_trees
+from .policy import POLICY_PATH, AuditPolicy, parse_policy
 from .security import verify_signature
 
 LOGGER = logging.getLogger("qnode")
@@ -54,6 +62,68 @@ def create_app(config: dict | None = None) -> Flask:
             abort(503, description="GitHub App installation is not configured")
         return client.installation_token(int(installation_id))
 
+    def repository_policy(
+        client: GitHubAppClient, repository: str, ref: str, token: str, paths: list[str]
+    ) -> AuditPolicy:
+        if POLICY_PATH not in paths:
+            return AuditPolicy()
+        content = client.file_text(repository, POLICY_PATH, ref, token)
+        if not content:
+            return AuditPolicy(
+                warning=".qnode.json is empty or could not be read. Using default rules."
+            )
+        return parse_policy(content)
+
+    def with_review_delta(
+        client: GitHubAppClient,
+        repository: str,
+        number: int,
+        pull: dict,
+        current_audit,
+        current_tree: TreeSnapshot,
+        policy: AuditPolicy,
+        token: str,
+    ):
+        """Best-effort comparison; a missing or truncated baseline never becomes a claim."""
+        if current_audit.files_truncated or current_tree.truncated or not pull.get("base_sha"):
+            return current_audit
+        try:
+            review = client.latest_submitted_review(repository, number, token)
+            if not review:
+                return current_audit
+            if review["commit_sha"] == pull["head_sha"]:
+                return replace(
+                    current_audit,
+                    review_delta=ReviewDelta(
+                        baseline_sha=review["commit_sha"],
+                        reviewed_at=review["submitted_at"],
+                        changed_paths=(),
+                        changed_path_count=0,
+                        new_signals=(),
+                        resolved_signals=(),
+                    ),
+                )
+            base_tree = client.tree_snapshot(repository, pull["base_sha"], token)
+            reviewed_tree = client.tree_snapshot(repository, review["commit_sha"], token)
+            previous_files = compare_trees(base_tree, reviewed_tree)
+            changed_files = compare_trees(reviewed_tree, current_tree)
+            if len(previous_files) > MAX_PR_FILES or len(changed_files) > MAX_PR_FILES:
+                return current_audit
+            prior_audit = audit_tree(reviewed_tree.paths, previous_files, policy=policy)
+            return replace(
+                current_audit,
+                review_delta=compare_review_signals(
+                    prior_audit,
+                    current_audit,
+                    baseline_sha=review["commit_sha"],
+                    reviewed_at=review["submitted_at"],
+                    changed_paths=(file.filename for file in changed_files),
+                ),
+            )
+        except (requests.RequestException, ValueError, KeyError, TypeError) as error:
+            LOGGER.warning("Review delta unavailable: %s", type(error).__name__)
+            return current_audit
+
     def run_installed_audit(
         client: GitHubAppClient,
         repository: str,
@@ -69,13 +139,20 @@ def create_app(config: dict | None = None) -> Flask:
         codeowners_content = (
             client.file_text(repository, codeowners_path, sha, token) if codeowners_path else ""
         )
+        policy = repository_policy(client, repository, sha, token, snapshot.paths)
         audit = audit_tree(
             snapshot.paths,
             changed_files,
             codeowners_content=codeowners_content,
             tree_truncated=snapshot.truncated,
             files_truncated=len(changed_files) >= MAX_PR_FILES,
+            policy=policy,
         )
+        if pull_number:
+            pull = client.pull_request_info(repository, pull_number, token)
+            audit = with_review_delta(
+                client, repository, pull_number, pull, audit, snapshot, policy, token
+            )
         client.publish_check(repository, sha, audit, token)
         return audit
 
@@ -104,7 +181,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.6.0",
+            version="0.7.0",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
             owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),
@@ -192,6 +269,7 @@ def create_app(config: dict | None = None) -> Flask:
             codeowners_content = (
                 client.file_text(repository, codeowners_path, ref, token) if codeowners_path else ""
             )
+            policy = repository_policy(client, repository, ref, token, snapshot.paths)
             audit = audit_tree(
                 snapshot.paths,
                 changed_files,
@@ -204,7 +282,19 @@ def create_app(config: dict | None = None) -> Flask:
                         or pull["changed_files"] > len(changed_files)
                     )
                 ),
+                policy=policy,
             )
+            if pull:
+                audit = with_review_delta(
+                    client,
+                    repository,
+                    pull_number,
+                    pull,
+                    audit,
+                    snapshot,
+                    policy,
+                    token,
+                )
         except requests.HTTPError as error:
             status = error.response.status_code if error.response is not None else 502
             if status == 404:

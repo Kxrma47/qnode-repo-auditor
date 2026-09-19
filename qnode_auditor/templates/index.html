@@ -133,6 +133,11 @@
           <div class="subheading"><span>PULL-REQUEST SIGNALS</span><b id="risk-count">0 DETECTED</b></div>
           <div id="risks" class="risk-grid"></div>
         </section>
+        <section id="delta-section" class="risk-section" hidden>
+          <div class="subheading"><span>SINCE LAST SUBMITTED REVIEW</span><b id="delta-count">0 CHANGED</b></div>
+          <p id="delta-summary" class="section-note"></p>
+          <div id="delta-signals" class="risk-grid"></div>
+        </section>
         <section id="companion-section" class="companion-section" hidden>
           <div class="subheading"><span>COMPANION CHANGES</span><b id="companion-count">0 SUGGESTED</b></div>
           <p class="section-note">Exact test and lockfile paths that may need to accompany this pull request.</p>
@@ -140,7 +145,7 @@
         </section>
         <section id="review-map-section" class="review-map-section" hidden>
           <div class="subheading"><span>REVIEW MAP</span><b id="lane-count">0 LANES</b></div>
-          <p class="section-note">Changed files grouped by lane, with CODEOWNERS, matching changed test paths, and focused review questions. Path matches are prompts—not proof of coverage.</p>
+          <p class="section-note">Changed files grouped by lane, with CODEOWNERS, candidate test targets, configured CI jobs, and focused review questions. Path matches are prompts—not proof of coverage.</p>
           <div id="review-lanes" class="review-lanes"></div>
         </section>
         <div class="report-actions">
@@ -151,6 +156,8 @@
         </div>
         <p id="truncated-warning" class="warning" hidden>GitHub truncated this repository tree. The report may be incomplete.</p>
         <p id="files-truncated-warning" class="warning" hidden>The pull request has more files than this scan could inspect. Review signals may be incomplete.</p>
+        <p id="policy-warning" class="warning" hidden></p>
+        <p id="ignored-note" class="section-note" hidden></p>
       </section>
     </section>
 
@@ -173,7 +180,7 @@
         <article>
           <span class="card-index">03</span>
           <h3>Review map</h3>
-          <p>Splits pull requests into logical lanes, maps CODEOWNERS and changed test paths, and gives reviewers a focused question for each risk.</p>
+          <p>Splits pull requests into logical lanes, maps CODEOWNERS, candidate tests, and configured CI jobs, and gives reviewers a focused question for each risk.</p>
         </article>
         <article>
           <span class="card-index">04</span>

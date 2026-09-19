@@ -105,6 +105,36 @@ function renderRisks(risks) {
   });
 }
 
+function renderDelta(delta) {
+  const section = document.querySelector("#delta-section");
+  const container = document.querySelector("#delta-signals");
+  container.replaceChildren();
+  section.hidden = !delta || !lastReport?.pull_request;
+  if (!delta) return;
+  setText("#delta-count", `${delta.changed_path_count} CHANGED PATHS`);
+  setText(
+    "#delta-summary",
+    `Compared with review commit ${delta.baseline_sha.slice(0, 12)} · ${delta.new_signals.length} new and ${delta.resolved_signals.length} resolved QNode signals. A signal is not proof of a code defect.`,
+  );
+  const changes = [
+    ...delta.new_signals.map((signal) => ({ signal, label: "NEW" })),
+    ...delta.resolved_signals.map((signal) => ({ signal, label: "RESOLVED" })),
+  ];
+  if (!changes.length) {
+    container.append(makeElement("p", "section-note", "No QNode risk-signal changes since the review. Changed paths still need human review."));
+  }
+  changes.slice(0, 12).forEach(({ signal, label }) => {
+    const card = makeElement("article", `risk-card ${signal.severity}`);
+    const header = makeElement("div", "risk-header");
+    header.append(makeElement("span", "risk-level", label), makeElement("strong", "", signal.title));
+    card.append(header, makeElement("p", "", signal.path || "Pull request-wide signal"));
+    container.append(card);
+  });
+  if (delta.changed_paths.length) {
+    container.append(makeElement("p", "section-note", `Changed paths: ${delta.changed_paths.slice(0, 8).join(", ")}${delta.changed_path_count > 8 ? " …" : ""}`));
+  }
+}
+
 function renderReviewMap(lanes) {
   const section = document.querySelector("#review-map-section");
   const container = document.querySelector("#review-lanes");
@@ -149,7 +179,13 @@ function renderReviewMap(lanes) {
     });
     const paths = makeElement("div", "lane-paths");
     lane.paths.forEach((path) => paths.append(makeElement("code", "", path)));
-    card.append(header, metrics, focus, ownership, testEvidence, questions, paths);
+    const targets = makeElement("p", "lane-tests", lane.test_targets?.length
+      ? `Candidate test targets: ${lane.test_targets.join(", ")}`
+      : "No existing same-lane test target detected");
+    const jobs = makeElement("p", "lane-tests", lane.configured_jobs?.length
+      ? `Configured CI jobs: ${lane.configured_jobs.join(", ")}`
+      : "No CI job mapping configured");
+    card.append(header, metrics, focus, ownership, testEvidence, targets, jobs, questions, paths);
     container.append(card);
   });
 }
@@ -226,10 +262,19 @@ function renderReport(data) {
   document.querySelector("#score-orbit").style.setProperty("--score", `${audit.score * 3.6}deg`);
   document.querySelector("#truncated-warning").hidden = !audit.tree_truncated;
   document.querySelector("#files-truncated-warning").hidden = !audit.files_truncated;
+  const policyWarning = document.querySelector("#policy-warning");
+  policyWarning.textContent = audit.policy_warning || "";
+  policyWarning.hidden = !audit.policy_warning;
+  const ignoredNote = document.querySelector("#ignored-note");
+  ignoredNote.textContent = audit.ignored_files
+    ? `${audit.ignored_files} changed file(s) excluded from heuristic warnings by .qnode.json. Credential-like and critical paths are still flagged.`
+    : "";
+  ignoredNote.hidden = !audit.ignored_files;
   renderChecks(audit.checks);
   renderRecommendations(audit.recommendations);
   renderPullRequest(data.pull_request);
   renderRisks(audit.risks);
+  renderDelta(audit.review_delta);
   renderCompanions(audit.companion_suggestions || []);
   renderReviewMap(audit.review_map || []);
   report.hidden = false;

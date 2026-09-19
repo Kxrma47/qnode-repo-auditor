@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "critical_paths": [
+    "qnode_auditor/app.py",
+    "qnode_auditor/github.py",
+    "qnode_auditor/security.py"
+  ],
+  "test_jobs": {
+    "qnode_auditor/**": ["test"]
+  }
+}

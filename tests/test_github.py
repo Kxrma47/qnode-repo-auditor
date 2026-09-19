@@ -3,7 +3,7 @@ import base64
 import pytest
 
 from qnode_auditor.audit import ChangedFile, audit_tree
-from qnode_auditor.github import GitHubAppClient
+from qnode_auditor.github import GitHubAppClient, TreeSnapshot, compare_trees
 
 
 class FakeResponse:
@@ -127,7 +127,7 @@ def test_pull_request_info_returns_public_report_metadata(monkeypatch):
                 "state": "open",
                 "draft": True,
                 "head": {"sha": "abc", "ref": "feature"},
-                "base": {"ref": "main"},
+                "base": {"sha": "def", "ref": "main"},
                 "changed_files": 3,
                 "additions": 40,
                 "deletions": 7,
@@ -138,8 +138,52 @@ def test_pull_request_info_returns_public_report_metadata(monkeypatch):
     pull = GitHubAppClient().pull_request_info("owner/repo", 12)
     assert pull["head_sha"] == "abc"
     assert pull["base_ref"] == "main"
+    assert pull["base_sha"] == "def"
     assert pull["draft"] is True
     assert pull["changed_files"] == 3
+
+
+def test_latest_submitted_review_skips_pending_and_bot_reviews(monkeypatch):
+    def fake_request(method, url, headers, timeout, **kwargs):
+        return FakeResponse(
+            [
+                {"state": "PENDING", "commit_id": "a" * 40},
+                {
+                    "state": "APPROVED",
+                    "commit_id": "b" * 40,
+                    "submitted_at": "2026-09-01T00:00:00Z",
+                    "user": {"type": "User"},
+                },
+                {
+                    "state": "COMMENTED",
+                    "commit_id": "c" * 40,
+                    "submitted_at": "2026-09-02T00:00:00Z",
+                    "user": {"type": "Bot"},
+                },
+            ]
+        )
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    review = GitHubAppClient().latest_submitted_review("owner/repo", 3)
+    assert review == {"commit_sha": "b" * 40, "submitted_at": "2026-09-01T00:00:00Z"}
+
+
+def test_compare_trees_uses_only_blob_ids_and_refuses_incomplete_trees():
+    before = TreeSnapshot(
+        ["src/app.py", "old.txt"], blob_shas={"src/app.py": "a" * 40, "old.txt": "b" * 40}
+    )
+    after = TreeSnapshot(
+        ["src/app.py", "new.txt"], blob_shas={"src/app.py": "c" * 40, "new.txt": "d" * 40}
+    )
+    assert [(file.filename, file.status) for file in compare_trees(before, after)] == [
+        ("new.txt", "added"),
+        ("old.txt", "removed"),
+        ("src/app.py", "modified"),
+    ]
+    with pytest.raises(ValueError, match="complete blob IDs"):
+        compare_trees(TreeSnapshot(["src/app.py"]), after)
+    with pytest.raises(ValueError, match="truncated"):
+        compare_trees(before, TreeSnapshot(after.paths, truncated=True, blob_shas=after.blob_shas))
 
 
 def test_check_run_contains_actionable_output_annotations_and_rerun(monkeypatch):

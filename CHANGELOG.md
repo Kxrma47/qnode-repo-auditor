@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 - 2026-09-19
+
+- Add best-effort PR review deltas: paths changed since the latest submitted human review, plus new and resolved path-level QNode signals.
+- Add optional `.qnode.json` for noisy-path suppression, critical-path prompts, and monorepo CI job suggestions.
+- Show candidate existing test targets and configured jobs per Review Map lane in website, JSON, Markdown, and GitHub Checks.
+- Keep credential-like path alerts active even when a repository ignores a path; reject invalid policy files with a visible warning.
+
 ## 0.6.0 - 2026-09-19
 
 - Add an authenticated, owner-only page showing GitHub's current App installation count.

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import base64
+import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,6 +19,30 @@ MAX_PR_FILES = 1000
 class TreeSnapshot:
     paths: list[str]
     truncated: bool = False
+    blob_shas: dict[str, str] = field(default_factory=dict)
+
+
+def compare_trees(base: TreeSnapshot, head: TreeSnapshot) -> tuple[ChangedFile, ...]:
+    """Compare blob IDs without downloading either commit's source contents."""
+    if base.truncated or head.truncated:
+        raise ValueError("GitHub truncated a comparison tree")
+    if (
+        len(base.blob_shas) != len(base.paths)
+        or len(head.blob_shas) != len(head.paths)
+        or not all(
+            re.fullmatch(r"[0-9a-fA-F]{40}", sha)
+            for sha in (*base.blob_shas.values(), *head.blob_shas.values())
+        )
+    ):
+        raise ValueError("GitHub did not provide complete blob IDs")
+    changes = []
+    for path in sorted(set(base.blob_shas) | set(head.blob_shas)):
+        before, after = base.blob_shas.get(path), head.blob_shas.get(path)
+        if before == after:
+            continue
+        status = "added" if before is None else "removed" if after is None else "modified"
+        changes.append(ChangedFile(path, status=status))
+    return tuple(changes)
 
 
 class GitHubAppClient:
@@ -110,12 +135,14 @@ class GitHubAppClient:
             token,
             params={"recursive": "1"},
         )
-        paths = [
-            node["path"]
+        blobs = {
+            node["path"]: node.get("sha", "")
             for node in data.get("tree", [])
             if node.get("type") == "blob" and node.get("path")
-        ]
-        return TreeSnapshot(paths=paths, truncated=bool(data.get("truncated")))
+        }
+        return TreeSnapshot(
+            paths=list(blobs), truncated=bool(data.get("truncated")), blob_shas=blobs
+        )
 
     def tree_paths(self, repository: str, sha: str, token: str) -> list[str]:
         """Compatibility wrapper retained for integrations using the original client API."""
@@ -180,10 +207,37 @@ class GitHubAppClient:
             "head_sha": data["head"]["sha"],
             "head_ref": data["head"]["ref"],
             "base_ref": data["base"]["ref"],
+            "base_sha": data["base"].get("sha", ""),
             "changed_files": int(data.get("changed_files", 0)),
             "additions": int(data.get("additions", 0)),
             "deletions": int(data.get("deletions", 0)),
         }
+
+    def latest_submitted_review(self, repository: str, number: int, token: str = "") -> dict | None:
+        """Latest submitted human review with a commit SHA, up to 1,000 reviews."""
+        latest = None
+        for page in range(1, 11):
+            reviews = self._request(
+                "GET",
+                f"{self.api}/repos/{repository}/pulls/{number}/reviews",
+                token,
+                params={"per_page": 100, "page": page},
+            )
+            for review in reviews:
+                if (
+                    review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
+                    and review.get("submitted_at")
+                    and review.get("commit_id")
+                    and (review.get("user") or {}).get("type") != "Bot"
+                ):
+                    latest = {
+                        "commit_sha": review["commit_id"],
+                        "submitted_at": review["submitted_at"],
+                    }
+            if len(reviews) < 100:
+                return latest
+        return None  # Do not claim a latest review when the listing was truncated.
+
 
     def publish_check(self, repository: str, sha: str, audit, token: str) -> dict:
         output = {

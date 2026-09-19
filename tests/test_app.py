@@ -32,7 +32,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "webhook_configured": True,
         "owner_metrics_configured": False,
     }
@@ -105,6 +105,8 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert b"qnode-app-icon.jpg" in response.data
     assert b'id="review-map-section"' in response.data
     assert b'id="companion-section"' in response.data
+    assert b'id="delta-section"' in response.data
+    assert b'id="policy-warning"' in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
 
@@ -164,6 +166,9 @@ def test_pull_request_webhook_publishes_path_and_change_analysis(monkeypatch):
                 ChangedFile("pyproject.toml", additions=2),
             ]
 
+        def pull_request_info(self, repository, number, token):
+            return {"base_sha": ""}
+
         def publish_check(self, repository, sha, audit, token):
             calls["score"] = audit.score
             calls["risks"] = [risk.key for risk in audit.risks]
@@ -220,6 +225,9 @@ def test_duplicate_delivery_does_not_publish_twice(monkeypatch):
         def pull_request_files(self, repository, number, token):
             return []
 
+        def pull_request_info(self, repository, number, token):
+            return {"base_sha": ""}
+
         def publish_check(self, repository, sha, audit, token):
             published.append(sha)
             return {}
@@ -261,6 +269,9 @@ def test_requested_check_action_reruns_pull_request_audit(monkeypatch):
         def pull_request_files(self, repository, number, token):
             calls["number"] = number
             return []
+
+        def pull_request_info(self, repository, number, token):
+            return {"base_sha": ""}
 
         def publish_check(self, repository, sha, audit, token):
             calls["published"] = repository
@@ -422,6 +433,89 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
         "tests/test_service.py"
     )
     assert "Engineering readiness" in response.json["audit"]["markdown"]
+
+
+def test_public_pr_includes_policy_and_review_delta_without_source_content(monkeypatch):
+    base, reviewed, head = "a" * 40, "b" * 40, "c" * 40
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {
+                "full_name": repository,
+                "html_url": f"https://github.com/{repository}",
+                "description": "Example",
+                "default_branch": "main",
+                "visibility": "public",
+                "language": "Python",
+                "stars": 0,
+                "forks": 0,
+                "open_issues": 0,
+                "archived": False,
+                "updated_at": None,
+            }
+
+        def pull_request_info(self, repository, number, token=""):
+            return {
+                "number": number,
+                "title": "Add auth change",
+                "html_url": f"https://github.com/{repository}/pull/{number}",
+                "state": "open",
+                "draft": False,
+                "head_sha": head,
+                "head_ref": "feature",
+                "base_ref": "main",
+                "base_sha": base,
+                "changed_files": 2,
+                "additions": 20,
+                "deletions": 2,
+            }
+
+        def pull_request_files(self, repository, number, token=""):
+            return [ChangedFile("src/auth.py", additions=10), ChangedFile("tests/test_auth.py")]
+
+        def tree_snapshot(self, repository, ref, token=""):
+            policy_blob = {".qnode.json": "d" * 40}
+            if ref == base:
+                blobs = policy_blob | {"pyproject.toml": "e" * 40}
+            elif ref == reviewed:
+                blobs = policy_blob | {"pyproject.toml": "f" * 40}
+            else:
+                assert ref == head
+                blobs = policy_blob | {
+                    "pyproject.toml": "e" * 40,
+                    "src/auth.py": "1" * 40,
+                    "tests/test_auth.py": "2" * 40,
+                }
+            return TreeSnapshot(list(blobs), blob_shas=blobs)
+
+        def file_text(self, repository, path, ref, token=""):
+            assert path == ".qnode.json"
+            return '{"version": 1, "critical_paths": ["src/auth.py"]}'
+
+        def latest_submitted_review(self, repository, number, token=""):
+            return {"commit_sha": reviewed, "submitted_at": "2026-09-18T00:00:00Z"}
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    response = create_app({"TESTING": True}).test_client().get(
+        "/api/audit?repository=owner/repo&pull=42"
+    )
+    assert response.status_code == 200
+    audit = response.json["audit"]
+    assert "critical-path" in {signal["key"] for signal in audit["risks"]}
+    assert [signal["key"] for signal in audit["review_delta"]["new_signals"]] == [
+        "critical-path"
+    ]
+    assert [signal["key"] for signal in audit["review_delta"]["resolved_signals"]] == [
+        "manifest-without-lock"
+    ]
+    assert audit["review_delta"]["changed_paths"] == [
+        "pyproject.toml",
+        "src/auth.py",
+        "tests/test_auth.py",
+    ]
 
 
 def test_public_pull_request_flags_partial_file_list(monkeypatch):
