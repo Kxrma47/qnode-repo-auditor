@@ -248,6 +248,7 @@ footer a { color: var(--cyan); text-decoration: none; }
   .report-count { display: none; }
   .checks { grid-template-columns: 1fr; }
   .pull-summary { align-items: flex-start; flex-direction: column; padding: 18px 22px; }
+  .pull-summary > div:first-child { width: 100%; }
   .pull-metrics { flex-wrap: wrap; }
   .risk-grid, .companion-grid, .review-lanes { grid-template-columns: 1fr; }
   .risk-section, .companion-section, .review-map-section, .report-actions { padding: 22px; }

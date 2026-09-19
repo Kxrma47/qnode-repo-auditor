@@ -88,6 +88,7 @@ class Audit:
     review_lanes: tuple[ReviewLane, ...] = ()
     companion_suggestions: tuple[CompanionSuggestion, ...] = ()
     tree_truncated: bool = False
+    files_truncated: bool = False
 
     @property
     def score(self) -> int:
@@ -207,6 +208,13 @@ class Audit:
             lines.extend(
                 ["", "> GitHub truncated the recursive tree response. Results may be incomplete."]
             )
+        if self.files_truncated:
+            lines.extend(
+                [
+                    "",
+                    "> The PR file list exceeded the scan limit. Review signals may be incomplete.",
+                ]
+            )
 
         lines.extend(
             [
@@ -225,6 +233,7 @@ class Audit:
             "passed": self.passed_count,
             "total": len(self.checks),
             "tree_truncated": self.tree_truncated,
+            "files_truncated": self.files_truncated,
             "checks": [check.to_dict() for check in self.checks],
             "risks": [risk.to_dict() for risk in self.risks],
             "review_map": [lane.to_dict() for lane in self.review_lanes],
@@ -460,6 +469,18 @@ def _candidate_test_paths(source_path: str) -> tuple[str, ...]:
     return (joined("tests", inner_parent, f"test_{stem}{suffix}"),)
 
 
+def _lockfile_candidates(manifest_path: str) -> tuple[str, ...]:
+    path = PurePosixPath(manifest_path)
+    lockfiles = LOCKFILE_SUGGESTIONS.get(path.name.lower(), tuple(sorted(LOCKFILES)))
+    return tuple(
+        dict.fromkeys(
+            str(location)
+            for lockfile in lockfiles
+            for location in (path.parent / lockfile, PurePosixPath(lockfile))
+        )
+    )
+
+
 def _companion_suggestions(
     paths: set[str], files: tuple[ChangedFile, ...]
 ) -> tuple[CompanionSuggestion, ...]:
@@ -492,14 +513,7 @@ def _companion_suggestions(
         lockfiles = LOCKFILE_SUGGESTIONS.get(manifest_name)
         if file.status == "removed" or not lockfiles:
             continue
-        parent = PurePosixPath(file.filename).parent
-        candidates = tuple(
-            dict.fromkeys(
-                str(location)
-                for lockfile in lockfiles
-                for location in (parent / lockfile, PurePosixPath(lockfile))
-            )
-        )
+        candidates = _lockfile_candidates(file.filename)
         if any(candidate in changed_paths for candidate in candidates):
             continue
         existing = next((candidate for candidate in candidates if candidate in paths), None)
@@ -507,7 +521,7 @@ def _companion_suggestions(
             CompanionSuggestion(
                 kind="lockfile",
                 source_path=file.filename,
-                suggested_path=existing or str(parent / lockfiles[0]),
+                suggested_path=existing or str(PurePosixPath(file.filename).parent / lockfiles[0]),
                 action="update" if existing else "add",
                 reason="Keep the resolved dependency graph reproducible.",
             )
@@ -655,11 +669,13 @@ def _pull_request_risks(files: tuple[ChangedFile, ...]) -> tuple[RiskSignal, ...
         and PurePosixPath(file.filename).suffix.lower() in SOURCE_SUFFIXES
     ]
     test_files = [file for file in files if _is_test_path(file.filename)]
+    changed_paths = {file.filename for file in files if file.status != "removed"}
     manifest_changes = [
-        file for file in files if PurePosixPath(file.filename.lower()).name in MANIFESTS
-    ]
-    lock_changes = [
-        file for file in files if PurePosixPath(file.filename.lower()).name in LOCKFILES
+        file
+        for file in files
+        if file.status != "removed"
+        and PurePosixPath(file.filename.lower()).name in MANIFESTS
+        and not any(path in changed_paths for path in _lockfile_candidates(file.filename))
     ]
     risks: list[RiskSignal] = []
 
@@ -675,13 +691,13 @@ def _pull_request_risks(files: tuple[ChangedFile, ...]) -> tuple[RiskSignal, ...
             )
         )
 
-    if manifest_changes and not lock_changes:
+    if manifest_changes:
         risks.append(
             RiskSignal(
                 "manifest-without-lock",
                 "medium",
                 "Dependency manifest changed without lockfile",
-                f"{manifest_changes[0].filename} changed without a recognized lockfile update.",
+                f"{manifest_changes[0].filename} changed without a matching lockfile update.",
                 annotation_path(manifest_changes[0]),
                 "Regenerate the lockfile or document why the dependency graph is unchanged.",
             )
@@ -774,6 +790,7 @@ def audit_tree(
     *,
     codeowners_content: str = "",
     tree_truncated: bool = False,
+    files_truncated: bool = False,
 ) -> Audit:
     """Evaluate safeguards using paths, change metadata, and optional CODEOWNERS policy."""
     paths = {str(PurePosixPath(path)) for path in tree_paths if path}
@@ -926,6 +943,7 @@ def audit_tree(
         review_lanes=_review_map(changed_files, risks, codeowners_content),
         companion_suggestions=companion_suggestions,
         tree_truncated=tree_truncated,
+        files_truncated=files_truncated,
     )
 
 

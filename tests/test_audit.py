@@ -1,3 +1,5 @@
+import pytest
+
 from qnode_auditor.audit import ChangedFile, audit_tree, find_codeowners_path
 
 COMPLETE_TREE = [
@@ -180,6 +182,40 @@ def test_lockfile_suggestion_uses_matching_workspace_not_unrelated_package():
     assert suggestion.action == "add"
 
 
+def test_unrelated_package_lockfile_does_not_hide_manifest_risk():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("packages/web/package.json", additions=2),
+            ChangedFile("packages/api/package-lock.json", additions=4),
+        ],
+    )
+    assert "manifest-without-lock" in {risk.key for risk in audit.risks}
+    assert "packages/web/package.json" in audit.risks[0].detail
+
+
+def test_root_workspace_lockfile_satisfies_nested_manifest():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("packages/web/package.json", additions=2),
+            ChangedFile("pnpm-lock.yaml", additions=4),
+        ],
+    )
+    assert "manifest-without-lock" not in {risk.key for risk in audit.risks}
+
+
+def test_removed_lockfile_does_not_satisfy_updated_manifest():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("packages/web/package.json", additions=2),
+            ChangedFile("packages/web/package-lock.json", status="removed", deletions=4),
+        ],
+    )
+    assert "manifest-without-lock" in {risk.key for risk in audit.risks}
+
+
 def test_codeowners_routes_lanes_and_reports_partial_coverage():
     codeowners = """
 * @org/default
@@ -296,3 +332,38 @@ def test_review_brief_does_not_treat_removed_source_as_needing_new_tests():
     assert not any(
         "live secret" in question for question in removed_key.review_lanes[0].review_questions
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "test"),
+    [
+        ("packages/api/src/users/service.py", "packages/api/tests/users/test_service.py"),
+        ("packages/web/src/cart.ts", "packages/web/src/cart.test.ts"),
+        ("services/auth/handler.go", "services/auth/handler_test.go"),
+        ("libs/core/lib/invoice.rb", "libs/core/spec/invoice_spec.rb"),
+        (
+            "packages/core/src/main/java/org/example/Account.java",
+            "packages/core/src/test/java/org/example/AccountTest.java",
+        ),
+        ("packages/cli/src/parser.rs", "packages/cli/tests/parser.rs"),
+    ],
+)
+def test_review_brief_matches_ecosystem_specific_test_paths(source, test):
+    audit = audit_tree(COMPLETE_TREE, [ChangedFile(source), ChangedFile(test)])
+    lane = next(lane for lane in audit.review_lanes if lane.source_files)
+    assert lane.source_files == 1
+    assert lane.test_path_matches == 1
+    assert not any("Matching changed test paths" in q for q in lane.review_questions)
+
+
+def test_audit_explicitly_marks_pr_file_limit_and_keeps_report_advisory():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [ChangedFile(f"packages/pkg{i}/src/app.py") for i in range(1000)],
+        files_truncated=True,
+    )
+    report = audit.to_dict()
+    assert len(report["review_map"]) == 1000
+    assert report["files_truncated"] is True
+    assert "file list exceeded the scan limit" in report["markdown"]
+    assert report["conclusion"] == "success"

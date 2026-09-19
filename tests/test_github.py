@@ -42,6 +42,22 @@ def test_public_request_omits_authorization_and_returns_tree_metadata(monkeypatc
     assert captured["kwargs"]["params"] == {"recursive": "1"}
 
 
+def test_missing_visibility_defaults_private_unless_github_explicitly_says_public(monkeypatch):
+    data = {
+        "full_name": "owner/repo",
+        "html_url": "https://github.com/owner/repo",
+        "default_branch": "main",
+    }
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        return FakeResponse(data)
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    assert GitHubAppClient().repository_info("owner/repo")["visibility"] == "private"
+    data["private"] = False
+    assert GitHubAppClient().repository_info("owner/repo")["visibility"] == "public"
+
+
 def test_pull_request_files_are_converted_to_domain_objects(monkeypatch):
     def fake_request(method, url, headers, timeout, **kwargs):
         return FakeResponse(
@@ -71,9 +87,7 @@ def test_file_text_decodes_codeowners_at_requested_ref(monkeypatch):
         return FakeResponse({"encoding": "base64", "content": content})
 
     monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
-    content = GitHubAppClient().file_text(
-        "owner/repo", ".github/CODEOWNERS", "feature/test"
-    )
+    content = GitHubAppClient().file_text("owner/repo", ".github/CODEOWNERS", "feature/test")
     assert content == "/src/ @org/core\n"
     assert captured["url"].endswith("/contents/.github/CODEOWNERS")
     assert captured["params"] == {"ref": "feature/test"}

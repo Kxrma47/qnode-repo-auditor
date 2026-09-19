@@ -29,7 +29,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.5.0",
+        "version": "0.5.1",
         "webhook_configured": True,
     }
     assert "super-secret-value" not in response.text
@@ -272,6 +272,33 @@ def test_public_audit_rejects_invalid_repository_and_ref():
     assert client.get("/api/audit?repository=owner/repo&pull=1&ref=main").status_code == 400
 
 
+def test_public_scanner_does_not_expose_private_repo_even_with_accessible_token(monkeypatch):
+    calls = []
+
+    class PrivateClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            calls.append((repository, token))
+            return {"visibility": "private", "full_name": repository}
+
+        def tree_snapshot(self, *args, **kwargs):
+            raise AssertionError("Private repository tree should never be fetched")
+
+        def pull_request_info(self, *args, **kwargs):
+            raise AssertionError("Private pull request should never be fetched")
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", PrivateClient)
+    app = create_app({"TESTING": True, "GITHUB_PUBLIC_TOKEN": "private-readable-token"})
+    client = app.test_client()
+    for target in ("repository=owner/repo", "repository=owner/repo&pull=9"):
+        response = client.get(f"/api/audit?{target}")
+        assert response.status_code == 404
+        assert "private" not in response.text.lower()
+    assert calls == [("owner/repo", "private-readable-token")] * 2
+
+
 def test_public_pull_request_audit_includes_change_risks(monkeypatch):
     class FakeClient:
         def __init__(self, **kwargs):
@@ -302,7 +329,7 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
                 "head_sha": "abc123",
                 "head_ref": "feature",
                 "base_ref": "main",
-                "changed_files": 2,
+                "changed_files": 1,
                 "additions": 32,
                 "deletions": 4,
             }
@@ -319,8 +346,8 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
             return "/src/ @org/backend\n"
 
     monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
-    response = create_app({"TESTING": True}).test_client().get(
-        "/api/audit?repository=owner/repo&pull=42"
+    response = (
+        create_app({"TESTING": True}).test_client().get("/api/audit?repository=owner/repo&pull=42")
     )
 
     assert response.status_code == 200
@@ -334,3 +361,34 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
         "tests/test_service.py"
     )
     assert "Engineering readiness" in response.json["audit"]["markdown"]
+
+
+def test_public_pull_request_flags_partial_file_list(monkeypatch):
+    class PartialClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {
+                "full_name": repository,
+                "html_url": f"https://github.com/{repository}",
+                "default_branch": "main",
+                "visibility": "public",
+            }
+
+        def pull_request_info(self, repository, number, token=""):
+            return {"head_sha": "abc", "changed_files": 1001, "number": number}
+
+        def pull_request_files(self, repository, number, token=""):
+            return [ChangedFile("src/app.py", additions=1)]
+
+        def tree_snapshot(self, repository, ref, token=""):
+            return TreeSnapshot(["README.md", "src/app.py"])
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", PartialClient)
+    response = (
+        create_app({"TESTING": True}).test_client().get("/api/audit?repository=owner/repo&pull=14")
+    )
+    assert response.status_code == 200
+    assert response.json["audit"]["files_truncated"] is True
+    assert "may be incomplete" in response.json["audit"]["markdown"]

@@ -225,6 +225,7 @@ function renderReport(data) {
 
   document.querySelector("#score-orbit").style.setProperty("--score", `${audit.score * 3.6}deg`);
   document.querySelector("#truncated-warning").hidden = !audit.tree_truncated;
+  document.querySelector("#files-truncated-warning").hidden = !audit.files_truncated;
   renderChecks(audit.checks);
   renderRecommendations(audit.recommendations);
   renderPullRequest(data.pull_request);

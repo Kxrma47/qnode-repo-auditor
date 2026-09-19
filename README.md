@@ -180,6 +180,8 @@ Never place a private key or webhook secret in source control, logs, issues, or 
 
 - Path presence cannot prove that tests, policies, or workflows are correct.
 - GitHub may truncate very large recursive trees; QNode marks such reports as potentially incomplete.
+- QNode scans up to 1,000 changed PR files and marks larger or partial file lists as incomplete.
+- The public scanner refuses non-public repositories even if its configured read token can access them.
 - A changed source file without a changed test is a review prompt, not proof that coverage is missing.
 - Test-path matches use filename conventions and do not prove that tests cover changed behavior; custom integration suites may not match.
 - Suggested test and lockfile paths are deterministic conventions; maintainers should adapt them to project-specific structure.

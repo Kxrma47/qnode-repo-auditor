@@ -11,6 +11,8 @@ import requests
 
 from .audit import ChangedFile
 
+MAX_PR_FILES = 1000
+
 
 @dataclass(frozen=True)
 class TreeSnapshot:
@@ -82,7 +84,8 @@ class GitHubAppClient:
             "html_url": data["html_url"],
             "description": data.get("description") or "",
             "default_branch": data["default_branch"],
-            "visibility": data.get("visibility", "public"),
+            "visibility": data.get("visibility")
+            or ("public" if data.get("private") is False else "private"),
             "language": data.get("language"),
             "stars": data.get("stargazers_count", 0),
             "forks": data.get("forks_count", 0),
@@ -129,7 +132,7 @@ class GitHubAppClient:
         number: int,
         token: str,
         *,
-        max_files: int = 1000,
+        max_files: int = MAX_PR_FILES,
     ) -> list[ChangedFile]:
         files: list[ChangedFile] = []
         page = 1

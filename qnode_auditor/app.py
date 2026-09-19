@@ -9,7 +9,7 @@ import requests
 from flask import Flask, abort, jsonify, render_template, request
 
 from .audit import audit_rules, audit_tree, find_codeowners_path
-from .github import GitHubAppClient
+from .github import MAX_PR_FILES, GitHubAppClient
 from .security import verify_signature
 
 LOGGER = logging.getLogger("qnode")
@@ -71,6 +71,7 @@ def create_app(config: dict | None = None) -> Flask:
             changed_files,
             codeowners_content=codeowners_content,
             tree_truncated=snapshot.truncated,
+            files_truncated=len(changed_files) >= MAX_PR_FILES,
         )
         client.publish_check(repository, sha, audit, token)
         return audit
@@ -100,7 +101,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.5.0",
+            version="0.5.1",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
         )
@@ -144,6 +145,8 @@ def create_app(config: dict | None = None) -> Flask:
             client = github_client()
             token = app.config["GITHUB_PUBLIC_TOKEN"]
             info = client.repository_info(repository, token)
+            if info["visibility"] != "public":
+                return jsonify(error="Repository or ref not found, or it is not public."), 404
             pull = None
             changed_files = []
             if requested_pull:
@@ -156,15 +159,20 @@ def create_app(config: dict | None = None) -> Flask:
             snapshot = client.tree_snapshot(repository, ref, token)
             codeowners_path = find_codeowners_path(snapshot.paths)
             codeowners_content = (
-                client.file_text(repository, codeowners_path, ref, token)
-                if codeowners_path
-                else ""
+                client.file_text(repository, codeowners_path, ref, token) if codeowners_path else ""
             )
             audit = audit_tree(
                 snapshot.paths,
                 changed_files,
                 codeowners_content=codeowners_content,
                 tree_truncated=snapshot.truncated,
+                files_truncated=(
+                    bool(pull)
+                    and (
+                        len(changed_files) >= MAX_PR_FILES
+                        or pull["changed_files"] > len(changed_files)
+                    )
+                ),
             )
         except requests.HTTPError as error:
             status = error.response.status_code if error.response is not None else 502

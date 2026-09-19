@@ -2,6 +2,14 @@
 
 All notable changes to QNode are documented here.
 
+## 0.5.1 - 2026-09-19
+
+- Block non-public repositories from the public scanner even if its configured read token could access them.
+- Mark PR reports as incomplete when the changed-file listing exceeds the scan limit.
+- Scope manifest/lockfile warnings to the matching workspace instead of accepting an unrelated monorepo lockfile.
+- Keep long PR titles within the mobile viewport.
+- Expand regression coverage for privacy, large PRs, monorepos, six test layouts, and responsive rendering.
+
 ## 0.5.0 - 2026-09-19
 
 - Add path-derived, lane-specific review questions for workflows, migrations, dependencies, credential-like paths, access control, tests, and ownership.
