@@ -23,7 +23,8 @@ Have a real review case QNode missed? [Tell us what signal you need](https://git
 
 Project policies: [contributing](CONTRIBUTING.md) · [governance](GOVERNANCE.md) ·
 [code of conduct](CODE_OF_CONDUCT.md) · [security](SECURITY.md) ·
-[architecture](docs/architecture.md) · [roadmap](docs/roadmap.md).
+[architecture](docs/architecture.md) · [security assurance](docs/security-assurance.md) ·
+[roadmap](docs/roadmap.md).
 
 ## What it reports
 
