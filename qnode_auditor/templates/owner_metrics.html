@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>QNode · Owner metrics</title>
+  <link rel="icon" href="{{ url_for('static', filename='qnode-app-icon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <main class="shell" style="max-width: 760px; padding-top: 5rem; padding-bottom: 5rem">
+    <p class="eyebrow">QNODE // PRIVATE OWNER VIEW</p>
+    <h1>App installations</h1>
+    <p style="font-size: 3rem; margin: 1rem 0">{{ installations }}</p>
+    <p>Current GitHub accounts or organizations with QNode installed. This is not a count of unique people, visits, scans, or active users.</p>
+    <p>Public scanner usage is not counted persistently yet. QNode's free hosting does not provide a durable usage database, so this page does not guess.</p>
+    <p><a href="https://github.com/Kxrma47/qnode-repo-auditor/discussions">Read user feedback</a> · <a href="/">Back to scanner</a></p>
+  </main>
+</body>
+</html>

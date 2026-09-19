@@ -77,6 +77,14 @@ class GitHubAppClient:
         )
         return data["token"]
 
+    def app_installation_count(self) -> int:
+        """Return GitHub's current number of accounts with this App installed."""
+        data = self._request("GET", f"{self.api}/app", self._app_jwt())
+        count = data.get("installations_count")
+        if type(count) is not int or count < 0:
+            raise ValueError("GitHub App response did not include an installation count")
+        return count
+
     def repository_info(self, repository: str, token: str = "") -> dict:
         data = self._request("GET", f"{self.api}/repos/{repository}", token)
         return {

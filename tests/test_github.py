@@ -1,5 +1,7 @@
 import base64
 
+import pytest
+
 from qnode_auditor.audit import ChangedFile, audit_tree
 from qnode_auditor.github import GitHubAppClient
 
@@ -16,6 +18,28 @@ class FakeResponse:
 
     def json(self):
         return self.data
+
+
+def test_app_installation_count_uses_app_auth_and_validates_response(monkeypatch):
+    captured = {}
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        captured.update(method=method, url=url, headers=headers)
+        return FakeResponse({"installations_count": 3})
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    monkeypatch.setattr(GitHubAppClient, "_app_jwt", lambda self: "app-jwt")
+    client = GitHubAppClient()
+    assert client.app_installation_count() == 3
+    assert captured["url"] == "https://api.github.com/app"
+    assert captured["headers"]["Authorization"] == "Bearer app-jwt"
+
+    def bad_request(method, url, headers, timeout, **kwargs):
+        return FakeResponse({"installations_count": "3"})
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", bad_request)
+    with pytest.raises(ValueError, match="installation count"):
+        client.app_installation_count()
 
 
 def test_public_request_omits_authorization_and_returns_tree_metadata(monkeypatch):

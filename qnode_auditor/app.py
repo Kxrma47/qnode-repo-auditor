@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import time
+from hmac import compare_digest
 
 import requests
 from flask import Flask, abort, jsonify, render_template, request
@@ -30,6 +31,8 @@ def create_app(config: dict | None = None) -> Flask:
         GITHUB_WEBHOOK_SECRET=os.getenv("GITHUB_WEBHOOK_SECRET", ""),
         PUBLIC_AUDIT_ENABLED=os.getenv("PUBLIC_AUDIT_ENABLED", "true").lower() == "true",
         AUDIT_CACHE_SECONDS=int(os.getenv("AUDIT_CACHE_SECONDS", "300")),
+        OWNER_METRICS_TOKEN=os.getenv("OWNER_METRICS_TOKEN", ""),
+        OWNER_METRICS_USERNAME=os.getenv("OWNER_METRICS_USERNAME", "Kxrma47"),
     )
     if config:
         app.config.update(config)
@@ -101,10 +104,38 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.5.1",
+            version="0.6.0",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
+            owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),
         )
+
+    @app.get("/owner/metrics")
+    def owner_metrics():
+        if not app.config["OWNER_METRICS_TOKEN"]:
+            abort(404)
+        credentials = request.authorization
+        username = credentials.username if credentials and credentials.type == "basic" else ""
+        password = credentials.password if credentials and credentials.type == "basic" else ""
+        if not (
+            compare_digest(username or "", app.config["OWNER_METRICS_USERNAME"])
+            and compare_digest(password or "", app.config["OWNER_METRICS_TOKEN"])
+        ):
+            response = app.make_response(("Owner authentication required.", 401))
+            response.headers["WWW-Authenticate"] = 'Basic realm="QNode owner metrics"'
+        else:
+            try:
+                installations = github_client().app_installation_count()
+            except (requests.RequestException, ValueError) as error:
+                LOGGER.warning("Owner metrics fetch failed: %s", type(error).__name__)
+                response = app.make_response(("GitHub installation count unavailable.", 502))
+            else:
+                response = app.make_response(
+                    render_template("owner_metrics.html", installations=installations)
+                )
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
 
     @app.get("/api/rules")
     def rules():

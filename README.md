@@ -4,18 +4,20 @@
 
 # QNode Repository Auditor
 
-**Actionable repository readiness and pull-request risk intelligence for GitHub.**
+**Know what to fix in a repository—and what to review carefully in a pull request.**
 
-[Live scanner](https://qnode-repo-auditor.onrender.com) · [Health](https://qnode-repo-auditor.onrender.com/health) · [Report a bug](https://github.com/Kxrma47/qnode-repo-auditor/issues)
+[Try the scanner](https://qnode-repo-auditor.onrender.com) · [Install the GitHub App](https://github.com/apps/qnode-repository-auditor) · [Suggest a feature](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6) · [Report a bug](https://github.com/Kxrma47/qnode-repo-auditor/issues)
 
 </div>
 
-QNode answers two practical questions:
+Paste a public `owner/repo` name or GitHub pull-request URL into the [scanner](https://qnode-repo-auditor.onrender.com). No installation or sign-in is needed to try it. QNode answers two practical questions:
 
 1. **What engineering safeguards is this repository missing?**
 2. **What deserves extra attention in this pull request?**
 
-The public scanner evaluates any public GitHub repository **or pull-request URL** and returns exact path evidence plus prioritized improvements. Reports have permanent share links and can be copied as Markdown or exported as JSON. When installed as a GitHub App, QNode publishes the same readiness map on pull requests and adds focused risk annotations.
+The public scanner evaluates a public GitHub repository **or pull-request URL** and returns path evidence plus prioritized improvements. Reports have shareable URLs and can be copied as Markdown or exported as JSON. Install the GitHub App if you want advisory Checks to appear automatically on pull requests. QNode reads file paths and metadata, not application source contents, and never blocks a merge.
+
+Have a real review case QNode missed? [Tell us what signal you need](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6). Include a public example and expected result if you can; [Issues](https://github.com/Kxrma47/qnode-repo-auditor/issues) are best for reproducible bugs.
 
 ## What it reports
 
@@ -74,7 +76,8 @@ QNode deliberately analyzes **paths, GitHub metadata, and the repository's CODEO
 
 - It reads CODEOWNERS solely to map changed paths to reviewer handles.
 - It does not download or parse application source-file contents; all other analysis uses paths and line counts only.
-- It does not store webhook payloads, installation tokens, repository paths, or reports.
+- It does not persist webhook payloads, installation tokens, repository paths, or reports.
+- The owner-only metrics page reads GitHub's current App installation count. It does not record individual visitors or public scans.
 - Public scans are cached in process for five minutes to reduce GitHub API traffic; the cache disappears on restart.
 - Installation tokens are created only for the active webhook request.
 - A score below the threshold is reported as `neutral`, never as a blocking failure.
@@ -168,6 +171,7 @@ Production secrets:
 
 - `GITHUB_PRIVATE_KEY`
 - `GITHUB_WEBHOOK_SECRET`
+- `OWNER_METRICS_TOKEN` (optional; enables the private owner page)
 
 Production identifiers:
 
@@ -175,6 +179,12 @@ Production identifiers:
 - `GITHUB_INSTALLATION_ID` (fallback for repository-level webhook setups)
 
 Never place a private key or webhook secret in source control, logs, issues, or browser-visible configuration.
+
+### Private owner metrics
+
+Set `OWNER_METRICS_TOKEN` to a unique, long random value in the hosting environment. Then open `/owner/metrics` over HTTPS and sign in using `Kxrma47` (or `OWNER_METRICS_USERNAME`) and that token. The route returns 404 while the token is unset, and is excluded from search indexing and caching when enabled. Do not share the token or put it in a URL.
+
+The number shown is **current GitHub App installations (accounts/organizations)**, fetched directly from GitHub. It is not the number of people, visits, or successful scans. The public scanner currently has no durable analytics store; adding privacy-preserving usage totals requires persistent storage and a clear retention policy. On Render's free service, local files and process memory cannot provide a reliable lifetime count.
 
 ## Limits
 

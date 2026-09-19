@@ -1,6 +1,9 @@
 import hashlib
 import hmac
 import json
+from base64 import b64encode
+
+import requests
 
 from qnode_auditor.app import create_app
 from qnode_auditor.audit import ChangedFile
@@ -29,10 +32,68 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.5.1",
+        "version": "0.6.0",
         "webhook_configured": True,
+        "owner_metrics_configured": False,
     }
     assert "super-secret-value" not in response.text
+
+
+def test_owner_metrics_fail_closed_without_secret():
+    client = create_app({"TESTING": True, "OWNER_METRICS_TOKEN": ""}).test_client()
+    assert client.get("/owner/metrics").status_code == 404
+
+
+def test_owner_metrics_auth_and_installation_count(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def app_installation_count(self):
+            return 7
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    client = create_app(
+        {
+            "TESTING": True,
+            "OWNER_METRICS_TOKEN": "long-test-secret",
+            "OWNER_METRICS_USERNAME": "owner",
+        }
+    ).test_client()
+    missing = client.get("/owner/metrics")
+    wrong = client.get(
+        "/owner/metrics", headers={"Authorization": "Basic " + b64encode(b"owner:wrong").decode()}
+    )
+    assert missing.status_code == wrong.status_code == 401
+    assert missing.headers["WWW-Authenticate"].startswith("Basic realm=")
+    valid = client.get(
+        "/owner/metrics",
+        headers={"Authorization": "Basic " + b64encode(b"owner:long-test-secret").decode()},
+    )
+    assert valid.status_code == 200
+    assert b"7" in valid.data
+    assert b"not a count of unique people" in valid.data
+    assert valid.headers["Cache-Control"] == "no-store, private"
+    assert valid.headers["X-Robots-Tag"] == "noindex, nofollow"
+
+
+def test_owner_metrics_github_failure_does_not_expose_error(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def app_installation_count(self):
+            raise requests.ConnectionError("private upstream detail")
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    client = create_app({"TESTING": True, "OWNER_METRICS_TOKEN": "secret"}).test_client()
+    response = client.get(
+        "/owner/metrics",
+        headers={"Authorization": "Basic " + b64encode(b"Kxrma47:secret").decode()},
+    )
+    assert response.status_code == 502
+    assert b"private upstream detail" not in response.data
+    assert response.headers["Cache-Control"] == "no-store, private"
 
 
 def test_index_is_an_interactive_scanner_with_security_headers():

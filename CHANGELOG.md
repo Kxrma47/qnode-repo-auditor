@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 - 2026-09-19
+
+- Add an authenticated, owner-only page showing GitHub's current App installation count.
+- Clarify what the count measures and that public scanner visitors are not tracked.
+- Make the README easier to try and add a dedicated feature-feedback discussion.
+
 All notable changes to QNode are documented here.
 
 ## 0.5.1 - 2026-09-19
