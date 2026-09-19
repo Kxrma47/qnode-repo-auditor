@@ -3,13 +3,17 @@ from __future__ import annotations
 import logging
 import os
 import re
+import secrets
+import sqlite3
 import time
 from dataclasses import replace
 from hmac import compare_digest
+from urllib.parse import urlsplit
 
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 
+from .analytics import VisitorStore
 from .audit import (
     ReviewDelta,
     audit_rules,
@@ -26,6 +30,7 @@ REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$"
 REF_PATTERN = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 PULL_PATTERN = re.compile(r"^[1-9][0-9]{0,9}$")
 PULL_REQUEST_ACTIONS = {"opened", "reopened", "synchronize", "ready_for_review"}
+BROWSER_TOKEN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -41,9 +46,13 @@ def create_app(config: dict | None = None) -> Flask:
         AUDIT_CACHE_SECONDS=int(os.getenv("AUDIT_CACHE_SECONDS", "300")),
         OWNER_METRICS_TOKEN=os.getenv("OWNER_METRICS_TOKEN", ""),
         OWNER_METRICS_USERNAME=os.getenv("OWNER_METRICS_USERNAME", "Kxrma47"),
+        VISITOR_METRICS_DB=os.getenv("VISITOR_METRICS_DB", ""),
     )
     if config:
         app.config.update(config)
+    visitor_store = (
+        VisitorStore(app.config["VISITOR_METRICS_DB"]) if app.config["VISITOR_METRICS_DB"] else None
+    )
 
     public_cache: dict[tuple[str, str], tuple[float, dict]] = {}
     processed_deliveries: dict[str, float] = {}
@@ -171,20 +180,65 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.get("/")
     def index():
-        return render_template(
-            "index.html",
-            public_audit_enabled=app.config["PUBLIC_AUDIT_ENABLED"],
+        response = app.make_response(
+            render_template(
+                "index.html",
+                public_audit_enabled=app.config["PUBLIC_AUDIT_ENABLED"],
+                visitor_metrics_enabled=bool(visitor_store),
+            )
         )
+        if (
+            visitor_store
+            and request.headers.get("DNT") != "1"
+            and not BROWSER_TOKEN_PATTERN.fullmatch(request.cookies.get("qnode_browser", ""))
+        ):
+            response.set_cookie(
+                "qnode_browser",
+                secrets.token_hex(16),
+                max_age=365 * 24 * 60 * 60,
+                secure=not app.config["TESTING"],
+                httponly=True,
+                samesite="Lax",
+            )
+        return response
+
+    @app.post("/api/visit")
+    def visit():
+        if not visitor_store:
+            abort(404)
+        token = request.cookies.get("qnode_browser", "")
+        origin = request.headers.get("Origin", "")
+        parsed_origin = urlsplit(origin)
+        if (
+            not BROWSER_TOKEN_PATTERN.fullmatch(token)
+            or request.headers.get("X-QNode-Visit") != "1"
+            or (
+                origin
+                and (
+                    parsed_origin.netloc != request.host
+                    or parsed_origin.scheme not in {"http", "https"}
+                )
+            )
+            or request.headers.get("DNT") == "1"
+        ):
+            abort(403)
+        try:
+            visitor_store.record(token)
+        except sqlite3.Error as error:
+            LOGGER.warning("Visitor metrics write failed: %s", type(error).__name__)
+            return ("", 503, {"Cache-Control": "no-store"})
+        return ("", 204, {"Cache-Control": "no-store"})
 
     @app.get("/health")
     def health():
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.7.0",
+            version="0.7.1",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
             owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),
+            visitor_metrics_configured=bool(visitor_store),
         )
 
     @app.get("/owner/metrics")
@@ -207,8 +261,19 @@ def create_app(config: dict | None = None) -> Flask:
                 LOGGER.warning("Owner metrics fetch failed: %s", type(error).__name__)
                 response = app.make_response(("GitHub installation count unavailable.", 502))
             else:
+                usage = None
+                if visitor_store:
+                    try:
+                        usage = visitor_store.snapshot()
+                    except sqlite3.Error as error:
+                        LOGGER.warning("Visitor metrics read failed: %s", type(error).__name__)
                 response = app.make_response(
-                    render_template("owner_metrics.html", installations=installations)
+                    render_template(
+                        "owner_metrics.html",
+                        installations=installations,
+                        usage=usage,
+                        visitor_metrics_enabled=bool(visitor_store),
+                    )
                 )
         response.headers["Cache-Control"] = "no-store, private"
         response.headers["X-Robots-Tag"] = "noindex, nofollow"

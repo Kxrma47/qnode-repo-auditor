@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </head>
-<body data-public-audit="{{ 'true' if public_audit_enabled else 'false' }}">
+<body data-public-audit="{{ 'true' if public_audit_enabled else 'false' }}" data-visitor-metrics="{{ 'true' if visitor_metrics_enabled else 'false' }}">
   <div class="ambient ambient-one"></div>
   <div class="ambient ambient-two"></div>
 
@@ -193,6 +193,9 @@
 
   <footer class="shell">
     <span>QNODE // ENGINEERING SIGNALS, NOT SECURITY CERTIFICATION</span>
+    {% if visitor_metrics_enabled %}
+    <span>Private usage count: random browser token and page views only; no IP or scan details stored. Do Not Track is respected.</span>
+    {% endif %}
     <a href="mailto:mahidulhaqalif@gmail.com">Contact</a>
   </footer>
 </body>

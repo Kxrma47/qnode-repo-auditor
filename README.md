@@ -82,7 +82,7 @@ QNode deliberately analyzes **paths, GitHub metadata, and the repository's CODEO
 - It reads `.qnode.json` only if the repository opts in, to apply path rules and job labels.
 - It does not download or parse application source-file contents; all other analysis uses paths and line counts only.
 - It does not persist webhook payloads, installation tokens, repository paths, or reports.
-- The owner-only metrics page reads GitHub's current App installation count. It does not record individual visitors or public scans.
+- The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores only a SHA-256 hash of a random browser token and aggregate daily page-view totals in local SQLite. It stores no IP addresses, user agents, repository URLs, or scan results. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.
 - Public scans are cached in process for five minutes to reduce GitHub API traffic; the cache disappears on restart.
 - Installation tokens are created only for the active webhook request.
 - A score below the threshold is reported as `neutral`, never as a blocking failure.
@@ -177,6 +177,7 @@ Production secrets:
 - `GITHUB_PRIVATE_KEY`
 - `GITHUB_WEBHOOK_SECRET`
 - `OWNER_METRICS_TOKEN` (optional; enables the private owner page)
+- `VISITOR_METRICS_DB` (optional; absolute path to a persistent SQLite database file)
 
 Production identifiers:
 
@@ -189,7 +190,11 @@ Never place a private key or webhook secret in source control, logs, issues, or 
 
 Set `OWNER_METRICS_TOKEN` to a unique, long random value in the hosting environment. Then open `/owner/metrics` over HTTPS and sign in using `Kxrma47` (or `OWNER_METRICS_USERNAME`) and that token. The route returns 404 while the token is unset, and is excluded from search indexing and caching when enabled. Do not share the token or put it in a URL.
 
-The number shown is **current GitHub App installations (accounts/organizations)**, fetched directly from GitHub. It is not the number of people, visits, or successful scans. The public scanner currently has no durable analytics store; adding privacy-preserving usage totals requires persistent storage and a clear retention policy. On Render's free service, local files and process memory cannot provide a reliable lifetime count.
+The installation number is **current GitHub App installations (accounts/organizations)**, fetched directly from GitHub. It is not the number of people, visits, or successful scans.
+
+For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load; no external analytics service is used. The database stores token hashes and daily counts, not raw cookies or user identity. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, and page views. It does not count API-only requests, and it cannot recover visits before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
+
+**Production:** do not set `VISITOR_METRICS_DB` on Render's free web service. Its local filesystem is erased on sleep, restart, or deploy, so an apparent lifetime count would reset unpredictably. Use a persistent mounted disk (a paid Render service) if you want SQLite for the live site. The published free deployment leaves website counting disabled until such storage is available. Do not commit the database file or put the owner token in a URL.
 
 ## Limits
 

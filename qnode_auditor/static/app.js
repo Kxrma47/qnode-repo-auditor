@@ -360,3 +360,12 @@ if (document.body.dataset.publicAudit === "true") {
   scanButton.disabled = true;
   formMessage.textContent = "Public scanning is disabled on this deployment.";
 }
+
+if (document.body.dataset.visitorMetrics === "true" && navigator.doNotTrack !== "1") {
+  fetch("/api/visit", {
+    method: "POST",
+    headers: { "X-QNode-Visit": "1" },
+    credentials: "same-origin",
+    keepalive: true,
+  }).catch(() => {});
+}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 - 2026-09-19
+
+- Add optional local SQLite website usage counting, visible only on the authenticated owner page.
+- Distinguish approximate unique browsers, recent browsers, and page views from GitHub App installations.
+- Keep tracking off without a configured database; avoid suggesting Render free local files provide durable totals.
+
 ## 0.7.0 - 2026-09-19
 
 - Add best-effort PR review deltas: paths changed since the latest submitted human review, plus new and resolved path-level QNode signals.

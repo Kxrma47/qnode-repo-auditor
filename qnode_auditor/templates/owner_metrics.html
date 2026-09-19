@@ -11,10 +11,20 @@
 <body>
   <main class="shell" style="max-width: 760px; padding-top: 5rem; padding-bottom: 5rem">
     <p class="eyebrow">QNODE // PRIVATE OWNER VIEW</p>
-    <h1>App installations</h1>
+    <h1>Private usage</h1>
+    <h2>App installations</h2>
     <p style="font-size: 3rem; margin: 1rem 0">{{ installations }}</p>
     <p>Current GitHub accounts or organizations with QNode installed. This is not a count of unique people, visits, scans, or active users.</p>
-    <p>Public scanner usage is not counted persistently yet. QNode's free hosting does not provide a durable usage database, so this page does not guess.</p>
+    {% if usage %}
+    <h2>Website</h2>
+    <p style="font-size: 2.5rem; margin: 1rem 0">{{ usage.unique_browsers }} <small>approximate unique browsers</small></p>
+    <p>{{ usage.recent_browsers }} browsers in the last 30 days · {{ usage.page_views }} page views since tracking began{% if usage.since %} on {{ usage.since[:10] }}{% endif %}.</p>
+    <p>One browser is not one person. Clearing cookies, switching devices, blocked JavaScript, Do Not Track, and automated traffic can affect these estimates. No IP addresses, user agents, or repository URLs are stored.</p>
+    {% elif visitor_metrics_enabled %}
+    <p>Website usage is temporarily unavailable. The installation count above is unaffected.</p>
+    {% else %}
+    <p>Website tracking is not enabled. Local SQLite on Render's free server is erased on sleep or redeploy, so QNode does not show a misleading lifetime count.</p>
+    {% endif %}
     <p><a href="https://github.com/Kxrma47/qnode-repo-auditor/discussions">Read user feedback</a> · <a href="/">Back to scanner</a></p>
   </main>
 </body>
