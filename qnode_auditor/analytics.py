@@ -16,6 +16,26 @@ def _visitor_hash(browser_token: str) -> str:
     return hashlib.sha256(browser_token.encode("ascii")).hexdigest()
 
 
+def metrics_error_category(error: Exception) -> str:
+    """Return a fixed diagnostic label without logging credentials or the DSN."""
+    message = str(error).lower()
+    if "certificate verify failed" in message or "certificate validation failed" in message:
+        return "tls_certificate"
+    if "password authentication failed" in message or "authentication failed" in message:
+        return "authentication"
+    if "could not translate host name" in message or "name or service not known" in message:
+        return "dns"
+    if "timeout expired" in message or "timed out" in message:
+        return "timeout"
+    if "connection refused" in message:
+        return "connection_refused"
+    if "invalid connection" in message or "invalid uri" in message:
+        return "connection_url"
+    if "permission denied" in message or "insufficient privilege" in message:
+        return "database_permission"
+    return "other"
+
+
 class VisitorStore:
     def __init__(self, path: str):
         if not path.startswith("/"):

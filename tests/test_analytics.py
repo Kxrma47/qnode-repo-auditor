@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 import pytest
 
-from qnode_auditor.analytics import PostgresVisitorStore, VisitorStore
+from qnode_auditor.analytics import PostgresVisitorStore, VisitorStore, metrics_error_category
 from qnode_auditor.app import create_app
 from qnode_auditor.github import TreeSnapshot
 
@@ -74,6 +74,22 @@ def test_postgres_backend_configuration_and_failure_is_private(monkeypatch):
     response = client.post("/api/visit", headers={"X-QNode-Visit": "1"})
     assert response.status_code == 503
     assert b"credential" not in response.data
+
+
+def test_metrics_diagnostics_never_echo_connection_details():
+    cases = {
+        "SSL error: certificate verify failed": "tls_certificate",
+        "password authentication failed for user 'private'": "authentication",
+        "could not translate host name secret.example": "dns",
+        "connection timed out": "timeout",
+        "connection refused": "connection_refused",
+        "invalid connection URI": "connection_url",
+        "permission denied for table visitors": "database_permission",
+        "opaque failure with password=private": "other",
+    }
+    for message, expected in cases.items():
+        assert metrics_error_category(psycopg.OperationalError(message)) == expected
+        assert "private" not in expected
 
 
 def test_scan_metrics_are_aggregate_only_and_survive_store_reopen(tmp_path):
