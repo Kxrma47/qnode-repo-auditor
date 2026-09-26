@@ -24,7 +24,8 @@ QNode reads repository paths, pull request metadata, CODEOWNERS, and optionally
 `.qnode.json`. It does not fetch application source contents for analysis. Public results
 are cached in process for up to five minutes and disappear on restart. The optional owner
 metrics page obtains the current installation count from GitHub; optional visitor counting
-uses a separately configured SQLite file and does not run on the published free deployment.
+uses either a local SQLite file or a separate PostgreSQL provider. The latter persists on
+Render Free only after the secret connection URL is configured in the hosting environment.
 The [README privacy model](../README.md#privacy-model) describes retained fields and
 limitations. Reports, installation tokens, and webhook payloads are not persisted.
 

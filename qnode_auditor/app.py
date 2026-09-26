@@ -11,10 +11,11 @@ from dataclasses import replace
 from hmac import compare_digest
 from urllib.parse import urlsplit
 
+import psycopg
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 
-from .analytics import VisitorStore
+from .analytics import PostgresVisitorStore, VisitorStore
 from .audit import (
     ChangedFile,
     ReviewDelta,
@@ -50,6 +51,7 @@ def create_app(config: dict | None = None) -> Flask:
         OWNER_METRICS_TOKEN=os.getenv("OWNER_METRICS_TOKEN", ""),
         OWNER_METRICS_USERNAME=os.getenv("OWNER_METRICS_USERNAME", "Kxrma47"),
         VISITOR_METRICS_DB=os.getenv("VISITOR_METRICS_DB", ""),
+        VISITOR_METRICS_URL=os.getenv("VISITOR_METRICS_URL", ""),
     )
     if config:
         app.config.update(config)
@@ -62,9 +64,13 @@ def create_app(config: dict | None = None) -> Flask:
                 private_key=app.config["GITHUB_PRIVATE_KEY"],
                 private_key_path=app.config["GITHUB_PRIVATE_KEY_PATH"],
             )._app_jwt()
-    visitor_store = (
-        VisitorStore(app.config["VISITOR_METRICS_DB"]) if app.config["VISITOR_METRICS_DB"] else None
-    )
+    if app.config["VISITOR_METRICS_DB"] and app.config["VISITOR_METRICS_URL"]:
+        raise ValueError("Configure only one visitor metrics backend")
+    visitor_store = None
+    if app.config["VISITOR_METRICS_URL"]:
+        visitor_store = PostgresVisitorStore(app.config["VISITOR_METRICS_URL"])
+    elif app.config["VISITOR_METRICS_DB"]:
+        visitor_store = VisitorStore(app.config["VISITOR_METRICS_DB"])
 
     public_cache: dict[tuple[str, str], tuple[float, dict]] = {}
     processed_deliveries: dict[str, float] = {}
@@ -80,7 +86,7 @@ def create_app(config: dict | None = None) -> Flask:
         if visitor_store and request.headers.get("DNT") != "1":
             try:
                 visitor_store.record_scan("pull_request" if is_pull_request else "repository")
-            except sqlite3.Error as error:
+            except (sqlite3.Error, psycopg.Error) as error:
                 LOGGER.warning("Scan metrics write failed: %s", type(error).__name__)
 
     def installation_token(client: GitHubAppClient, payload: dict) -> str:
@@ -243,7 +249,7 @@ def create_app(config: dict | None = None) -> Flask:
             abort(403)
         try:
             visitor_store.record(token)
-        except sqlite3.Error as error:
+        except (sqlite3.Error, psycopg.Error) as error:
             LOGGER.warning("Visitor metrics write failed: %s", type(error).__name__)
             return ("", 503, {"Cache-Control": "no-store"})
         return ("", 204, {"Cache-Control": "no-store"})
@@ -284,7 +290,7 @@ def create_app(config: dict | None = None) -> Flask:
                 if visitor_store:
                     try:
                         usage = visitor_store.snapshot()
-                    except sqlite3.Error as error:
+                    except (sqlite3.Error, psycopg.Error) as error:
                         LOGGER.warning("Visitor metrics read failed: %s", type(error).__name__)
                 response = app.make_response(
                     render_template(

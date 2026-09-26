@@ -10,6 +10,21 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: qnode_ci_only
+          POSTGRES_DB: qnode_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qnode_ci_only"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      QNODE_TEST_POSTGRES_URL: postgresql://postgres:qnode_ci_only@127.0.0.1:5432/qnode_ci_only
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]

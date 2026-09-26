@@ -101,7 +101,7 @@ QNode deliberately analyzes **paths, GitHub metadata, and the repository's CODEO
 - It reads `.qnode.json` only if the repository opts in, to apply path rules and job labels.
 - It does not download or parse application source-file contents; all other analysis uses paths and line counts only.
 - It does not persist webhook payloads, installation tokens, repository paths, or reports.
-- The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores only a SHA-256 hash of a random browser token and aggregate daily page-view totals in local SQLite. It stores no IP addresses, user agents, repository URLs, or scan results. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.
+- The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores only a SHA-256 hash of a random browser token and aggregate daily page-view and scan-request totals, in local SQLite or a configured PostgreSQL provider. It stores no IP addresses, user agents, repository URLs, or scan results. If PostgreSQL is configured, those limited metrics leave Render for that provider; no browser-side third-party tracker is used. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.
 - Public scans are cached in process for five minutes to reduce GitHub API traffic; the cache disappears on restart.
 - Installation tokens are created only for the active webhook request.
 - A score below the threshold is reported as `neutral`, never as a blocking failure.
@@ -198,6 +198,7 @@ Production secrets:
 - `GITHUB_PRIVATE_KEY`
 - `GITHUB_WEBHOOK_SECRET`
 - `OWNER_METRICS_TOKEN` (optional; enables the private owner page)
+- `VISITOR_METRICS_URL` (optional; durable PostgreSQL URL for private usage counts)
 - `VISITOR_METRICS_DB` (optional; absolute path to a persistent SQLite database file)
 
 Production identifiers:
@@ -221,9 +222,9 @@ Set `OWNER_METRICS_TOKEN` to a unique, long random value in the hosting environm
 
 The installation number is **current GitHub App installations (accounts/organizations)**, fetched directly from GitHub. It is not the number of people, visits, or successful scans.
 
-For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load; no external analytics service is used. The database stores token hashes and daily counts, not raw cookies or user identity. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, page views, and successful public repository/PR scans (including cached requests). Scan counts are requests, not people, and do not store repository names. Do Not Track requests are excluded. It cannot recover activity before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
+For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load. The database stores token hashes and daily counts, not raw cookies or user identity. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, page views, and successful public repository/PR scans (including cached requests). Scan counts are requests, not people, and do not store repository names. Do Not Track requests are excluded. It cannot recover activity before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
 
-**Production:** do not set `VISITOR_METRICS_DB` on Render's free web service. Its local filesystem is erased on sleep, restart, or deploy, so an apparent lifetime count would reset unpredictably. Use a persistent mounted disk (a paid Render service) if you want SQLite for the live site. The published free deployment leaves website counting disabled until such storage is available. Do not commit the database file or put the owner token in a URL.
+**Free production storage:** Render Free erases local SQLite on sleep, restart, and deploy. Create a dedicated free PostgreSQL database (for example, a [Neon Free project](https://neon.com/pricing)) and put its connection string in Render's secret `VISITOR_METRICS_URL`. Keep `VISITOR_METRICS_DB` unset. QNode forces server-certificate verification and sends only random-browser-token SHA-256 hashes, timestamps, and aggregate daily counts to the database. It does **not** send IP addresses, user agents, repository names, source code, or scan results to Neon. No third-party browser script is added. The owner dashboard remains protected by `OWNER_METRICS_TOKEN`. The count starts at zero when the database is connected; previous visits cannot be reconstructed. Free database limits and availability are controlled by the provider, so check its current terms before relying on it. Do not commit or share either secret.
 
 ## Limits
 
