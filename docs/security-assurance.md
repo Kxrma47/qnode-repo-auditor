@@ -8,11 +8,11 @@ claim that unknown vulnerabilities do not exist. User facing limits are in
 ## Assets, threats, and trust boundaries
 
 Assets include the GitHub App private key, webhook secret, installation tokens, optional
-owner metrics token, and repository metadata read during an audit. Attackers may send
+owner metrics token, optional PostgreSQL connection secret, and repository metadata read during an audit. Attackers may send
 arbitrary public HTTP requests, supply repository names and refs, open pull requests in
 repositories where the App is installed, or attempt to forge webhooks. GitHub API data and
 repository policy files are treated as untrusted input. The hosting environment and GitHub
-service are external trust dependencies.
+service and optional PostgreSQL provider are external trust dependencies.
 
 There are three main boundaries:
 
@@ -38,8 +38,9 @@ certificate verification; QNode does not disable it. Network calls have timeouts
 Audit findings are constructed from paths and GitHub metadata, not repository source
 execution. User supplied path text is rendered through Flask/Jinja autoescaping or
 browser DOM `textContent`, not inserted as trusted HTML. `.qnode.json` is parsed as a
-bounded policy format, not executed. The optional SQLite visitor store uses parameterized
-queries and stores hashes of random browser tokens rather than raw tokens. Security
+bounded policy format, not executed. Both optional visitor stores use parameterized
+queries and store hashes of random browser tokens rather than raw tokens. The PostgreSQL
+connection verifies the server certificate against system roots. Security
 headers include a restrictive Content Security Policy and no sniffing.
 
 Evidence includes the [test suite](../tests/), the [Python static scan and coverage CI](../.github/workflows/tests.yml),

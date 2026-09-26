@@ -3,7 +3,10 @@ import sqlite3
 from base64 import b64encode
 from datetime import UTC, datetime, timedelta
 
-from qnode_auditor.analytics import VisitorStore
+import psycopg
+import pytest
+
+from qnode_auditor.analytics import PostgresVisitorStore, VisitorStore
 from qnode_auditor.app import create_app
 from qnode_auditor.github import TreeSnapshot
 
@@ -38,6 +41,39 @@ def test_empty_store_and_invalid_path(tmp_path):
         assert "absolute" in str(error)
     else:
         raise AssertionError("relative storage path must be rejected")
+
+
+def test_postgres_backend_configuration_and_failure_is_private(monkeypatch):
+    with pytest.raises(ValueError, match="PostgreSQL URL"):
+        PostgresVisitorStore("/tmp/not-a-postgres-url")
+    with pytest.raises(ValueError, match="only one"):
+        create_app(
+            {
+                "TESTING": True,
+                "VISITOR_METRICS_DB": "/tmp/visitors.sqlite3",
+                "VISITOR_METRICS_URL": "postgresql://example.invalid/qnode",
+            }
+        )
+
+    class UnavailableStore:
+        def __init__(self, url):
+            assert url == "postgresql://example.invalid/qnode"
+
+        def record(self, token):
+            raise psycopg.OperationalError("credential-must-not-be-shown")
+
+    monkeypatch.setattr("qnode_auditor.app.PostgresVisitorStore", UnavailableStore)
+    client = create_app(
+        {
+            "TESTING": True,
+            "VISITOR_METRICS_URL": "postgresql://example.invalid/qnode",
+        }
+    ).test_client()
+    assert client.get("/health").json["visitor_metrics_configured"] is True
+    client.get("/")
+    response = client.post("/api/visit", headers={"X-QNode-Visit": "1"})
+    assert response.status_code == 503
+    assert b"credential" not in response.data
 
 
 def test_scan_metrics_are_aggregate_only_and_survive_store_reopen(tmp_path):

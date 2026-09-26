@@ -16,6 +16,8 @@ services:
         generateValue: true
       - key: OWNER_METRICS_TOKEN
         generateValue: true
+      - key: VISITOR_METRICS_URL
+        sync: false
       - key: PUBLIC_AUDIT_ENABLED
         value: "true"
       - key: AUDIT_CACHE_SECONDS
