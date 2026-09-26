@@ -114,6 +114,9 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert b'id="policy-warning"' in response.data
     assert b'id="contract-section"' in response.data
     assert b'id="policy-simulator"' in response.data
+    assert b'href="#policy-simulator">Preview a change contract</a>' in response.data
+    assert b"Install the GitHub App" not in response.data
+    assert b"github.com/apps/qnode-repository-auditor" not in response.data
     assert b'id="delta-lanes"' in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
