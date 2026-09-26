@@ -6,6 +6,7 @@ import secrets
 from base64 import b64encode
 from datetime import UTC, datetime
 
+import certifi
 import psycopg
 import pytest
 
@@ -20,10 +21,12 @@ def test_postgres_metrics_are_durable_aggregate_and_tls_is_required(monkeypatch)
 
     def connect_test_database(conninfo, **kwargs):
         assert kwargs["sslmode"] == "verify-full"
-        assert kwargs["sslrootcert"] == "system"
+        assert kwargs["sslrootcert"] == certifi.where()
+        assert kwargs["channel_binding"] == "require"
         # Only the disposable CI database accepts local unencrypted connections.
         kwargs["sslmode"] = "disable"
         kwargs.pop("sslrootcert")
+        kwargs.pop("channel_binding")
         return original_connect(conninfo, **kwargs)
 
     monkeypatch.setattr(analytics.psycopg, "connect", connect_test_database)

@@ -40,7 +40,8 @@ execution. User supplied path text is rendered through Flask/Jinja autoescaping 
 browser DOM `textContent`, not inserted as trusted HTML. `.qnode.json` is parsed as a
 bounded policy format, not executed. Both optional visitor stores use parameterized
 queries and store hashes of random browser tokens rather than raw tokens. The PostgreSQL
-connection verifies the server certificate against system roots. Security
+connection verifies the server certificate against the maintained certifi CA bundle and
+requires SCRAM channel binding. Security
 headers include a restrictive Content Security Policy and no sniffing.
 
 Evidence includes the [test suite](../tests/), the [Python static scan and coverage CI](../.github/workflows/tests.yml),

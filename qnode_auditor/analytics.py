@@ -8,6 +8,7 @@ from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 
+import certifi
 import psycopg
 
 
@@ -103,7 +104,11 @@ class PostgresVisitorStore:
     def _connection(self) -> psycopg.Connection:
         # Never log the DSN: it contains a database credential.
         connection = psycopg.connect(
-            self.dsn, connect_timeout=5, sslmode="verify-full", sslrootcert="system"
+            self.dsn,
+            connect_timeout=5,
+            sslmode="verify-full",
+            sslrootcert=certifi.where(),
+            channel_binding="require",
         )
         if not self._schema_ready:
             with self._schema_lock:
