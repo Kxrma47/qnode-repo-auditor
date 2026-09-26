@@ -49,7 +49,7 @@
         </div>
         <div class="trust-row" aria-label="Privacy and behavior">
           <span>◆ No application source contents</span>
-          <span>◆ No data retention</span>
+          <span>◆ No scan reports stored</span>
           <span>◆ Advisory, never blocking</span>
         </div>
       </div>
@@ -91,6 +91,19 @@
         <p class="input-help">Examples: <code>pallets/flask</code> · <code>github.com/owner/repo/pull/42</code> · <code>owner/repo#42</code></p>
         <p id="form-message" class="form-message" role="status" aria-live="polite"></p>
       </form>
+
+      <details id="policy-simulator" class="policy-simulator">
+        <summary>Preview a change contract without installing the App</summary>
+        <p class="section-note">Paste a policy and changed paths. This preview runs on QNode's server but makes no GitHub request and stores no submitted paths.</p>
+        <label for="preview-policy">.qnode.json policy</label>
+        <textarea id="preview-policy" rows="12" spellcheck="false">{"version":1,"change_contracts":[{"id":"api-client","when":["openapi/**"],"require_any":["generated/client/**","src/client/**"],"reason":"Keep the client in sync with the API schema"}]}</textarea>
+        <label for="preview-paths">Changed paths, one per line</label>
+        <textarea id="preview-paths" rows="4" spellcheck="false">openapi/api.yaml
+src/client/api.ts</textarea>
+        <button id="preview-button" type="button" class="ghost-button">Preview rules</button>
+        <p id="preview-message" role="status" aria-live="polite"></p>
+        <div id="preview-results" class="contract-list" aria-live="polite"></div>
+      </details>
 
       <section id="report" class="report" hidden aria-live="polite">
         <header class="report-header">
@@ -137,6 +150,12 @@
           <div class="subheading"><span>SINCE LAST SUBMITTED REVIEW</span><b id="delta-count">0 CHANGED</b></div>
           <p id="delta-summary" class="section-note"></p>
           <div id="delta-signals" class="risk-grid"></div>
+          <div id="delta-lanes" class="delta-lanes" aria-label="Areas changed since the latest submitted review"></div>
+        </section>
+        <section id="contract-section" class="contract-section" hidden>
+          <div class="subheading"><span>DECLARED REVIEW EVIDENCE</span><b id="contract-count">0 RULES</b></div>
+          <p class="section-note">Repository-defined path relationships, not code dependencies or test coverage. Missing evidence means no matching changed path was seen; partial PR lists show unknown.</p>
+          <div id="contract-list" class="contract-list"></div>
         </section>
         <section id="companion-section" class="companion-section" hidden>
           <div class="subheading"><span>COMPANION CHANGES</span><b id="companion-count">0 SUGGESTED</b></div>
@@ -180,7 +199,7 @@
         <article>
           <span class="card-index">03</span>
           <h3>Review map</h3>
-          <p>Splits pull requests into logical lanes, maps CODEOWNERS, candidate tests, and configured CI jobs, and gives reviewers a focused question for each risk.</p>
+          <p>Splits pull requests into logical lanes, maps CODEOWNERS and candidate tests, and visualizes repository-declared companion evidence.</p>
         </article>
         <article>
           <span class="card-index">04</span>

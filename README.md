@@ -17,6 +17,11 @@ Paste a public `owner/repo` name or GitHub pull-request URL into the [scanner](h
 1. **What engineering safeguards is this repository missing?**
 2. **What deserves extra attention in this pull request?**
 
+For teams with repeatable cross-file expectations, QNode can now answer a third question:
+**which companion changes did this repository explicitly require, and which appeared in the PR?**
+Try the [interactive change-contract preview](https://qnode-repo-auditor.onrender.com/#policy-simulator)
+or see the [worked example](docs/examples/change-contract-demo.md).
+
 The public scanner evaluates a public GitHub repository **or pull-request URL** and returns path evidence plus prioritized improvements. Reports have shareable URLs and can be copied as Markdown or exported as JSON. Install the GitHub App if you want advisory Checks to appear automatically on pull requests. QNode reads file paths and metadata, not application source contents, and never blocks a merge.
 
 Have a real review case QNode missed? [Tell us what signal you need](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6). Include a public example and expected result if you can; [Issues](https://github.com/Kxrma47/qnode-repo-auditor/issues) are best for reproducible bugs.
@@ -62,6 +67,13 @@ updating a test that already exists. Manifest changes receive a workspace-aware 
 suggestion when the corresponding lockfile was not changed.
 
 After a human review, QNode can also show paths changed since that review plus new and resolved QNode signals. The delta is omitted if GitHub cannot provide a complete comparison; it is not a claim that code defects were fixed.
+The website also plots counts by review lane so reviewers can see which areas changed again.
+
+Repositories can opt into [change contracts](docs/policy.md): a migration, schema, or other
+path can require specific changed companion paths or one of several alternatives. The visual
+Review Evidence Map links the triggering paths to present/missing/unknown companions and
+declared CODEOWNERS. It never treats filename matching as proof of test coverage or actual
+runtime dependency. Incomplete PR file lists produce **unknown**, not false missing results.
 
 Signals appear in the GitHub Check summary and as file annotations. The check remains advisory and offers a **Re-run audit** action after changes are pushed.
 
@@ -73,7 +85,7 @@ Each lane now includes a focused, path-derived review brief: questions about wor
 
 For monorepos, lanes also show candidate existing test files and any CI jobs declared in the repository's optional [`.qnode.json` policy](docs/policy.md). The policy can suppress noisy heuristic paths and mark critical paths for deeper review. QNode still flags credential-like paths even when ignored. Configured jobs are suggestions, not jobs QNode has executed or verified.
 
-The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-request URL, making the same metadata-and-policy review available before installing the App.
+The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-request URL, making the same metadata-and-policy review available before installing the App. You can also preview a proposed `.qnode.json` rule against sample paths without a GitHub call.
 
 ### Share and export
 
@@ -209,7 +221,7 @@ Set `OWNER_METRICS_TOKEN` to a unique, long random value in the hosting environm
 
 The installation number is **current GitHub App installations (accounts/organizations)**, fetched directly from GitHub. It is not the number of people, visits, or successful scans.
 
-For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load; no external analytics service is used. The database stores token hashes and daily counts, not raw cookies or user identity. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, and page views. It does not count API-only requests, and it cannot recover visits before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
+For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load; no external analytics service is used. The database stores token hashes and daily counts, not raw cookies or user identity. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, page views, and successful public repository/PR scans (including cached requests). Scan counts are requests, not people, and do not store repository names. Do Not Track requests are excluded. It cannot recover activity before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
 
 **Production:** do not set `VISITOR_METRICS_DB` on Render's free web service. Its local filesystem is erased on sleep, restart, or deploy, so an apparent lifetime count would reset unpredictably. Use a persistent mounted disk (a paid Render service) if you want SQLite for the live site. The published free deployment leaves website counting disabled until such storage is available. Do not commit the database file or put the owner token in a URL.
 
@@ -223,6 +235,7 @@ For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path
 - Test-path matches use filename conventions and do not prove that tests cover changed behavior; custom integration suites may not match.
 - Suggested test and lockfile paths are deterministic conventions; maintainers should adapt them to project-specific structure.
 - CODEOWNERS routing reports declared handles and coverage, but does not verify team membership or review availability.
+- A declared change contract verifies matching changed paths only; it does not inspect source content, verify tests, or confirm a reviewer approved the change.
 - Public API calls are subject to GitHub rate limits.
 - Review deltas require a submitted human review and complete GitHub comparisons; otherwise they are omitted.
 

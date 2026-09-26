@@ -31,8 +31,11 @@ from the short-lived cache), and `audit`. Pull-request scans also contain `pull_
 `audit` contains `score` (0–100), `grade` (A–F), `conclusion` (`success` or advisory
 `neutral`), `passed`, `total`, `checks`, `recommendations`, `risks`, `review_map`,
 `companion_suggestions`, and `markdown`. It also contains `tree_truncated`,
-`files_truncated`, `ignored_files`, `policy_warning`, and `review_delta` (an object only
+`change_contracts`, `files_truncated`, `ignored_files`, `policy_warning`, and `review_delta` (an object only
 when a complete comparison since a submitted human review is available, otherwise `null`).
+`review_delta.changed_lanes` lists path counts per review lane. Each triggered contract includes
+`status`, `trigger_paths`, `trigger_count`, `lanes`, declared `owners`, and per-pattern
+`requirements` with `present`, `missing`, or `unknown` status.
 Each check includes `key`, `category`, `label`, `passed`, `weight`, `evidence`, and
 `recommendation`. Scores and path-derived suggestions are review aids, not proof of code
 quality, test coverage, or security. See [policy options](policy.md) for `.qnode.json`.
@@ -48,6 +51,17 @@ is disabled, Flask returns a standard 404 page instead.
 | `502` | GitHub request failed or GitHub was temporarily unreachable. |
 
 ## Other endpoints
+
+- `POST /api/policy-preview`: send JSON with `policy` (the `.qnode.json` object),
+  `changed_paths` (up to 1,000 repository-relative paths), and optional
+  `files_truncated` (boolean). Returns triggered `change_contracts` without a GitHub request.
+  Invalid policy or paths return `400`; bodies over 64 KiB return `413`. For example:
+
+  ```bash
+  curl -X POST -H 'Content-Type: application/json' \
+    -d '{"policy":{"version":1,"change_contracts":[{"id":"schema","when":["openapi/**"],"require_any":["generated/**"]}]},"changed_paths":["openapi/api.yaml"]}' \
+    'https://qnode-repo-auditor.onrender.com/api/policy-preview'
+  ```
 
 - `GET /api/rules`: `rules` describes the twelve weighted checks and `total_weight` is 100.
 - `GET /health`: `status`, `service`, `version`, and booleans for configured public audit,

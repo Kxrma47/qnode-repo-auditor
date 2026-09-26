@@ -7,5 +7,13 @@
   ],
   "test_jobs": {
     "qnode_auditor/**": ["test"]
-  }
+  },
+  "change_contracts": [
+    {
+      "id": "policy-tests-and-docs",
+      "when": ["qnode_auditor/policy.py"],
+      "require_all": ["tests/test_policy.py", "docs/policy.md"],
+      "reason": "Keep policy validation tested and documented"
+    }
+  ]
 }

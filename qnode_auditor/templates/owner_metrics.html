@@ -19,6 +19,8 @@
     <h2>Website</h2>
     <p style="font-size: 2.5rem; margin: 1rem 0">{{ usage.unique_browsers }} <small>approximate unique browsers</small></p>
     <p>{{ usage.recent_browsers }} browsers in the last 30 days · {{ usage.page_views }} page views since tracking began{% if usage.since %} on {{ usage.since[:10] }}{% endif %}.</p>
+    <h2>Successful public scans</h2>
+    <p>{{ usage.repository_scans }} repository scans · {{ usage.pull_request_scans }} pull-request scans, including cached results. These are requests, not unique users or confirmed reviews.</p>
     <p>One browser is not one person. Clearing cookies, switching devices, blocked JavaScript, Do Not Track, and automated traffic can affect these estimates. No IP addresses, user agents, or repository URLs are stored.</p>
     {% elif visitor_metrics_enabled %}
     <p>Website usage is temporarily unavailable. The installation count above is unaffected.</p>

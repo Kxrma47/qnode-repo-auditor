@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import PurePosixPath
 
-from .policy import AuditPolicy
+from .policy import AuditPolicy, matches
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,7 @@ class ReviewDelta:
     changed_path_count: int
     new_signals: tuple[RiskSignal, ...]
     resolved_signals: tuple[RiskSignal, ...]
+    changed_lanes: tuple[tuple[str, int], ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -103,7 +105,37 @@ class ReviewDelta:
             "changed_path_count": self.changed_path_count,
             "new_signals": [signal.to_dict() for signal in self.new_signals],
             "resolved_signals": [signal.to_dict() for signal in self.resolved_signals],
+            "changed_lanes": [
+                {"lane": lane, "changed_paths": count} for lane, count in self.changed_lanes
+            ],
         }
+
+
+@dataclass(frozen=True)
+class ContractRequirement:
+    patterns: tuple[str, ...]
+    mode: str
+    status: str
+    matched_paths: tuple[str, ...]
+    matched_count: int
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ContractEvidence:
+    id: str
+    reason: str
+    status: str
+    trigger_paths: tuple[str, ...]
+    trigger_count: int
+    lanes: tuple[str, ...]
+    owners: tuple[str, ...]
+    requirements: tuple[ContractRequirement, ...]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -117,6 +149,7 @@ class Audit:
     ignored_files: int = 0
     policy_warning: str = ""
     review_delta: ReviewDelta | None = None
+    change_contracts: tuple[ContractEvidence, ...] = ()
 
     @property
     def score(self) -> int:
@@ -213,6 +246,31 @@ class Audit:
                 lines.append(f"- **New:** {signal.title} (`{signal.path or 'PR'}`)")
             for signal in delta.resolved_signals[:8]:
                 lines.append(f"- **Resolved:** {signal.title} (`{signal.path or 'PR'}`)")
+            if delta.changed_lanes:
+                lines.append(
+                    "- **Changed lanes:** "
+                    + ", ".join(f"`{lane}` ({count})" for lane, count in delta.changed_lanes[:8])
+                )
+
+        if self.change_contracts:
+            lines.extend(["", "### Declared change contracts"])
+            for contract in self.change_contracts:
+                lines.append(
+                    f"- **{contract.id} · {contract.status.upper()}:** "
+                    f"{contract.trigger_count} trigger path(s); "
+                    f"declared owners: {', '.join(contract.owners) or 'none'}"
+                )
+                for requirement in contract.requirements:
+                    lines.append(
+                        f"  - {requirement.status.upper()} · "
+                        f"{'one of ' if requirement.mode == 'any' else ''}"
+                        + ", ".join(f"`{pattern}`" for pattern in requirement.patterns)
+                        + (
+                            ": " + ", ".join(f"`{path}`" for path in requirement.matched_paths)
+                            if requirement.matched_paths
+                            else ""
+                        )
+                    )
 
         if self.companion_suggestions:
             lines.extend(["", "### Suggested companion changes"])
@@ -260,8 +318,11 @@ class Audit:
             lines.extend(["", f"> {self.policy_warning}"])
         elif self.ignored_files:
             lines.extend(
-                ["", f"_{self.ignored_files} changed file(s) excluded from heuristic warnings "
-                 "by .qnode.json; credential-like and critical paths are never suppressed._"]
+                [
+                    "",
+                    f"_{self.ignored_files} changed file(s) excluded from heuristic warnings "
+                    "by .qnode.json; credential-like and critical paths are never suppressed._",
+                ]
             )
 
         if self.tree_truncated:
@@ -304,6 +365,7 @@ class Audit:
             "companion_suggestions": [
                 suggestion.to_dict() for suggestion in self.companion_suggestions
             ],
+            "change_contracts": [contract.to_dict() for contract in self.change_contracts],
             "recommendations": [
                 {
                     "label": check.label,
@@ -751,6 +813,77 @@ def _review_map(
     )
 
 
+def evaluate_change_contracts(
+    files: Iterable[ChangedFile],
+    policy: AuditPolicy,
+    *,
+    files_truncated: bool = False,
+    codeowners_content: str = "",
+) -> tuple[ContractEvidence, ...]:
+    """Evaluate only declared path relationships; absence is unknown on partial file lists."""
+    available = sorted({file.filename for file in files if file.status != "removed"})
+    owner_rules = _codeowners_rules(codeowners_content)
+    results = []
+    for rule in policy.change_contracts:
+        triggers = [
+            path for path in available if any(matches(pattern, path) for pattern in rule.when)
+        ]
+        if not triggers:
+            continue
+        requirements = []
+        for pattern in rule.require_all:
+            found = tuple(path for path in available if matches(pattern, path))
+            requirements.append(
+                ContractRequirement(
+                    (pattern,),
+                    "all",
+                    "present" if found else "unknown" if files_truncated else "missing",
+                    found[:8],
+                    len(found),
+                )
+            )
+        if rule.require_any:
+            found = tuple(
+                path
+                for path in available
+                if any(matches(pattern, path) for pattern in rule.require_any)
+            )
+            requirements.append(
+                ContractRequirement(
+                    rule.require_any,
+                    "any",
+                    "present" if found else "unknown" if files_truncated else "missing",
+                    found[:8],
+                    len(found),
+                )
+            )
+        statuses = {requirement.status for requirement in requirements}
+        status = (
+            "missing"
+            if "missing" in statuses
+            else "unknown"
+            if "unknown" in statuses
+            else "present"
+        )
+        results.append(
+            ContractEvidence(
+                id=rule.id,
+                reason=rule.reason,
+                status=status,
+                trigger_paths=tuple(triggers[:8]),
+                trigger_count=len(triggers),
+                lanes=tuple(dict.fromkeys(_review_lane_key(path) for path in triggers)),
+                owners=tuple(
+                    dict.fromkeys(
+                        owner for path in triggers for owner in _owners_for_path(path, owner_rules)
+                    )
+                )[:8],
+                requirements=tuple(requirements),
+            )
+        )
+    return tuple(results)
+
+
 def _pull_request_risks(
     files: tuple[ChangedFile, ...], policy: AuditPolicy | None = None
 ) -> tuple[RiskSignal, ...]:
@@ -1074,6 +1207,12 @@ def audit_tree(
         risks=risks,
         review_lanes=_review_map(changed_files, risks, codeowners_content, paths, policy),
         companion_suggestions=companion_suggestions,
+        change_contracts=evaluate_change_contracts(
+            changed_files,
+            policy,
+            files_truncated=files_truncated,
+            codeowners_content=codeowners_content,
+        ),
         tree_truncated=tree_truncated,
         files_truncated=files_truncated,
         ignored_files=sum(policy.ignored(file.filename) for file in changed_files),
@@ -1103,6 +1242,7 @@ def compare_review_signals(
     changed_paths: Iterable[str],
 ) -> ReviewDelta:
     """Diff path-scoped and PR-wide advisory signals, not source-code behavior."""
+
     def identity(signal: RiskSignal) -> tuple[str, str | None]:
         return signal.key, signal.path if signal.key == "critical-path" else None
 
@@ -1111,6 +1251,7 @@ def compare_review_signals(
     before = {identity(signal): signal for signal in baseline.risks if signal.key != "large-change"}
     after = {identity(signal): signal for signal in current.risks if signal.key != "large-change"}
     unique_paths = tuple(dict.fromkeys(changed_paths))
+    lane_counts = Counter(_review_lane_key(path) for path in unique_paths)
     return ReviewDelta(
         baseline_sha=baseline_sha,
         reviewed_at=reviewed_at,
@@ -1118,4 +1259,5 @@ def compare_review_signals(
         changed_path_count=len(unique_paths),
         new_signals=tuple(signal for key, signal in after.items() if key not in before),
         resolved_signals=tuple(signal for key, signal in before.items() if key not in after),
+        changed_lanes=tuple(sorted(lane_counts.items(), key=lambda item: (-item[1], item[0]))),
     )

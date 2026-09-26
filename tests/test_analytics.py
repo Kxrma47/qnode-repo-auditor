@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from qnode_auditor.analytics import VisitorStore
 from qnode_auditor.app import create_app
+from qnode_auditor.github import TreeSnapshot
 
 
 def test_store_counts_browsers_and_page_views_across_connections(tmp_path):
@@ -19,6 +20,8 @@ def test_store_counts_browsers_and_page_views_across_connections(tmp_path):
         "recent_browsers": 2,
         "page_views": 3,
         "since": (now - timedelta(days=31)).isoformat(),
+        "repository_scans": 0,
+        "pull_request_scans": 0,
     }
     with sqlite3.connect(path) as connection:
         rows = connection.execute("SELECT visitor_hash FROM visitors").fetchall()
@@ -35,6 +38,24 @@ def test_empty_store_and_invalid_path(tmp_path):
         assert "absolute" in str(error)
     else:
         raise AssertionError("relative storage path must be rejected")
+
+
+def test_scan_metrics_are_aggregate_only_and_survive_store_reopen(tmp_path):
+    path = tmp_path / "visitors.sqlite3"
+    store = VisitorStore(str(path))
+    store.record_scan("repository")
+    store.record_scan("repository")
+    store.record_scan("pull_request")
+    assert VisitorStore(str(path)).snapshot()["repository_scans"] == 2
+    assert VisitorStore(str(path)).snapshot()["pull_request_scans"] == 1
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM daily_scans").fetchone()[0] == 2
+    try:
+        store.record_scan("owner/repo")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("only aggregate scan kinds may be stored")
 
 
 def test_private_website_metrics_and_beacon_validation(monkeypatch, tmp_path):
@@ -97,3 +118,38 @@ def test_visitor_store_failure_does_not_break_scanner(tmp_path):
     ).test_client()
     assert client.get("/").status_code == 200
     assert client.post("/api/visit", headers={"X-QNode-Visit": "1"}).status_code == 503
+
+
+def test_successful_public_scans_are_counted_without_repository_names(monkeypatch, tmp_path):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {
+                "visibility": "public",
+                "default_branch": "main",
+                "full_name": repository,
+                "html_url": f"https://github.com/{repository}",
+                "description": "Demo",
+                "language": "Python",
+                "updated_at": "2026-09-26T00:00:00Z",
+            }
+
+        def tree_snapshot(self, repository, ref, token=""):
+            return TreeSnapshot(["README.md"])
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    path = tmp_path / "visitors.sqlite3"
+    client = create_app({"TESTING": True, "VISITOR_METRICS_DB": str(path)}).test_client()
+    assert client.get("/api/audit?repository=owner/repo").status_code == 200
+    assert client.get("/api/audit?repository=owner/repo").json["cached"] is True
+    assert client.get("/api/audit?repository=owner/repo", headers={"DNT": "1"}).status_code == 200
+    assert client.get("/api/audit?repository=invalid").status_code == 400
+    assert VisitorStore(str(path)).snapshot()["repository_scans"] == 2
+    with sqlite3.connect(path) as connection:
+        schemas = " ".join(
+            row[0]
+            for row in connection.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL")
+        )
+        assert "owner/repo" not in schemas

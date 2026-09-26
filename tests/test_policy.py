@@ -129,3 +129,106 @@ def test_review_delta_reports_new_and_resolved_signals():
     ]
     assert delta.new_signals == ()
     assert delta.changed_paths == ("tests/test_app.py", "pyproject.toml")
+    assert delta.changed_lanes == (("tests", 1), (".", 1)) or delta.changed_lanes == (
+        (".", 1),
+        ("tests", 1),
+    )
+
+
+def test_change_contracts_present_missing_and_declared_owners():
+    policy = parse_policy(
+        json.dumps(
+            {
+                "version": 1,
+                "change_contracts": [
+                    {
+                        "id": "api-schema",
+                        "when": ["services/api/openapi/**"],
+                        "require_all": ["packages/client/generated/**", "tests/contracts/**"],
+                        "require_any": ["docs/api/**", "CHANGELOG.md"],
+                        "reason": "Update generated client and contract tests",
+                    }
+                ],
+            }
+        )
+    )
+    files = [
+        ChangedFile("services/api/openapi/api.yaml"),
+        ChangedFile("packages/client/generated/api.ts"),
+        ChangedFile("CHANGELOG.md"),
+    ]
+    audit = audit_tree(
+        [file.filename for file in files],
+        files,
+        policy=policy,
+        codeowners_content="/services/api/** @org/api\n",
+    )
+    contract = audit.change_contracts[0]
+    assert contract.status == "missing"
+    assert contract.lanes == ("services/api",)
+    assert contract.owners == ("@org/api",)
+    assert [item.status for item in contract.requirements] == ["present", "missing", "present"]
+    assert contract.requirements[0].matched_paths == ("packages/client/generated/api.ts",)
+    assert "api-schema · MISSING" in audit.markdown()
+    assert audit.to_dict()["change_contracts"][0]["id"] == "api-schema"
+    completed = audit_tree(
+        [file.filename for file in files] + ["tests/contracts/api_test.py"],
+        files + [ChangedFile("tests/contracts/api_test.py")],
+        policy=policy,
+    )
+    assert completed.change_contracts[0].status == "present"
+
+
+def test_change_contracts_partial_list_is_unknown_not_missing():
+    policy = parse_policy(
+        json.dumps(
+            {
+                "version": 1,
+                "change_contracts": [
+                    {
+                        "id": "migration",
+                        "when": ["supabase/migrations/**"],
+                        "require_all": ["src/database.types.ts"],
+                    }
+                ],
+            }
+        )
+    )
+    files = [ChangedFile("supabase/migrations/001.sql")]
+    partial = audit_tree(
+        ["supabase/migrations/001.sql"], files, policy=policy, files_truncated=True
+    )
+    assert partial.change_contracts[0].status == "unknown"
+    assert partial.change_contracts[0].requirements[0].status == "unknown"
+    complete = audit_tree(["supabase/migrations/001.sql"], files, policy=policy)
+    assert complete.change_contracts[0].status == "missing"
+    removed = audit_tree(
+        [], [ChangedFile("supabase/migrations/001.sql", status="removed")], policy=policy
+    )
+    assert removed.change_contracts == ()
+
+
+def test_change_contracts_invalid_rules_fail_as_a_whole():
+    rules = [
+        {"id": "x", "when": [], "require_all": ["docs/**"]},
+        {"id": "x", "when": ["src/**"]},
+        {"id": "x", "when": ["src/**"], "require_all": ["../secret"]},
+        {"id": "x", "when": ["src/**"], "require_all": ["docs/**"], "reason": "bad | text"},
+        {"id": "x", "when": ["src/**"], "require_all": ["docs/**"], "extra": True},
+    ]
+    for rule in rules:
+        policy = parse_policy(json.dumps({"version": 1, "change_contracts": [rule]}))
+        assert policy.warning.startswith("Invalid .qnode.json:")
+        assert policy.change_contracts == ()
+    duplicate = parse_policy(
+        json.dumps(
+            {
+                "version": 1,
+                "change_contracts": [
+                    {"id": "x", "when": ["src/**"], "require_all": ["tests/**"]},
+                    {"id": "x", "when": ["docs/**"], "require_any": ["README.md"]},
+                ],
+            }
+        )
+    )
+    assert duplicate.warning
