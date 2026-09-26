@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Mahidul Haque" }]
 dependencies = [
+  "certifi>=2025.1.31",
   "Flask>=3.0,<4",
   "gunicorn>=23,<27",
   "PyJWT[crypto]>=2.8,<3",
