@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -15,10 +16,12 @@ from flask import Flask, abort, jsonify, render_template, request
 
 from .analytics import VisitorStore
 from .audit import (
+    ChangedFile,
     ReviewDelta,
     audit_rules,
     audit_tree,
     compare_review_signals,
+    evaluate_change_contracts,
     find_codeowners_path,
 )
 from .github import MAX_PR_FILES, GitHubAppClient, TreeSnapshot, compare_trees
@@ -72,6 +75,13 @@ def create_app(config: dict | None = None) -> Flask:
             private_key=app.config["GITHUB_PRIVATE_KEY"],
             private_key_path=app.config["GITHUB_PRIVATE_KEY_PATH"],
         )
+
+    def record_successful_scan(is_pull_request: bool) -> None:
+        if visitor_store and request.headers.get("DNT") != "1":
+            try:
+                visitor_store.record_scan("pull_request" if is_pull_request else "repository")
+            except sqlite3.Error as error:
+                LOGGER.warning("Scan metrics write failed: %s", type(error).__name__)
 
     def installation_token(client: GitHubAppClient, payload: dict) -> str:
         installation_id = (payload.get("installation") or {}).get("id")
@@ -243,7 +253,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.7.1",
+            version="0.8.0",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
             owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),
@@ -292,6 +302,48 @@ def create_app(config: dict | None = None) -> Flask:
     def rules():
         return jsonify(rules=audit_rules(), total_weight=100)
 
+    @app.post("/api/policy-preview")
+    def policy_preview():
+        """Preview path-only contracts without a GitHub request or source upload."""
+        if request.content_length is None or request.content_length > 65536:
+            return jsonify(error="Preview body must be at most 64 KiB."), 413
+        values = request.get_json(silent=True)
+        if not isinstance(values, dict) or set(values) - {
+            "policy",
+            "changed_paths",
+            "files_truncated",
+        }:
+            return jsonify(error="Provide a policy and changed_paths."), 400
+        policy_data = values.get("policy")
+        paths = values.get("changed_paths")
+        truncated = values.get("files_truncated", False)
+        if (
+            not isinstance(policy_data, dict)
+            or not isinstance(paths, list)
+            or type(truncated) is not bool
+        ):
+            return jsonify(error="Invalid preview fields."), 400
+        if len(paths) > MAX_PR_FILES or not all(
+            isinstance(path, str)
+            and 0 < len(path) <= 500
+            and not path.startswith("/")
+            and ".." not in path.split("/")
+            and "\\" not in path
+            and not any(char in path for char in "*?[]|`\r\n")
+            and all(ord(char) >= 32 for char in path)
+            for path in paths
+        ):
+            return jsonify(
+                error="changed_paths must be at most 1,000 repository-relative paths."
+            ), 400
+        policy = parse_policy(json.dumps(policy_data))
+        if policy.warning:
+            return jsonify(error=policy.warning), 400
+        evidence = evaluate_change_contracts(
+            (ChangedFile(path) for path in paths), policy, files_truncated=truncated
+        )
+        return jsonify(change_contracts=[item.to_dict() for item in evidence])
+
     @app.route("/api/audit", methods=["GET", "POST"])
     def public_audit():
         if not app.config["PUBLIC_AUDIT_ENABLED"]:
@@ -321,6 +373,7 @@ def create_app(config: dict | None = None) -> Flask:
         if cached and time.monotonic() - cached[0] < app.config["AUDIT_CACHE_SECONDS"]:
             response = dict(cached[1])
             response["cached"] = True
+            record_successful_scan(bool(requested_pull))
             return jsonify(response)
 
         try:
@@ -394,6 +447,7 @@ def create_app(config: dict | None = None) -> Flask:
         if len(public_cache) > 256:
             oldest = min(public_cache, key=lambda key: public_cache[key][0])
             public_cache.pop(oldest, None)
+        record_successful_scan(bool(requested_pull))
         return jsonify(response)
 
     @app.post("/webhook")

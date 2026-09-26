@@ -34,7 +34,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.7.1",
+        "version": "0.8.0",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -112,6 +112,9 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert b'id="companion-section"' in response.data
     assert b'id="delta-section"' in response.data
     assert b'id="policy-warning"' in response.data
+    assert b'id="contract-section"' in response.data
+    assert b'id="policy-simulator"' in response.data
+    assert b'id="delta-lanes"' in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
 
@@ -122,6 +125,44 @@ def test_rules_endpoint_describes_weighted_contract():
     assert response.status_code == 200
     assert response.json["total_weight"] == 100
     assert len(response.json["rules"]) == 12
+
+
+def test_policy_preview_evaluates_without_github_or_source_content():
+    client = create_app({"TESTING": True}).test_client()
+    response = client.post(
+        "/api/policy-preview",
+        json={
+            "policy": {
+                "version": 1,
+                "change_contracts": [
+                    {"id": "schema", "when": ["openapi/**"], "require_any": ["generated/**"]}
+                ],
+            },
+            "changed_paths": ["openapi/api.yaml"],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json["change_contracts"][0]["status"] == "missing"
+    unknown = client.post(
+        "/api/policy-preview",
+        json={
+            "policy": {
+                "version": 1,
+                "change_contracts": [
+                    {"id": "schema", "when": ["openapi/**"], "require_any": ["generated/**"]}
+                ],
+            },
+            "changed_paths": ["openapi/api.yaml"],
+            "files_truncated": True,
+        },
+    )
+    assert unknown.json["change_contracts"][0]["status"] == "unknown"
+    for payload in (
+        {"policy": {"version": 1, "change_contracts": [{"id": "x"}]}, "changed_paths": []},
+        {"policy": {"version": 1}, "changed_paths": ["../secret"]},
+        {"policy": {"version": 1}, "changed_paths": ["src/*.py"]},
+    ):
+        assert client.post("/api/policy-preview", json=payload).status_code == 400
 
 
 def test_ping_requires_and_accepts_signature():
@@ -498,21 +539,31 @@ def test_public_pr_includes_policy_and_review_delta_without_source_content(monke
 
         def file_text(self, repository, path, ref, token=""):
             assert path == ".qnode.json"
-            return '{"version": 1, "critical_paths": ["src/auth.py"]}'
+            return json.dumps(
+                {
+                    "version": 1,
+                    "critical_paths": ["src/auth.py"],
+                    "change_contracts": [
+                        {
+                            "id": "auth-tests",
+                            "when": ["src/auth.py"],
+                            "require_all": ["tests/test_auth.py"],
+                        }
+                    ],
+                }
+            )
 
         def latest_submitted_review(self, repository, number, token=""):
             return {"commit_sha": reviewed, "submitted_at": "2026-09-18T00:00:00Z"}
 
     monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
-    response = create_app({"TESTING": True}).test_client().get(
-        "/api/audit?repository=owner/repo&pull=42"
+    response = (
+        create_app({"TESTING": True}).test_client().get("/api/audit?repository=owner/repo&pull=42")
     )
     assert response.status_code == 200
     audit = response.json["audit"]
     assert "critical-path" in {signal["key"] for signal in audit["risks"]}
-    assert [signal["key"] for signal in audit["review_delta"]["new_signals"]] == [
-        "critical-path"
-    ]
+    assert [signal["key"] for signal in audit["review_delta"]["new_signals"]] == ["critical-path"]
     assert [signal["key"] for signal in audit["review_delta"]["resolved_signals"]] == [
         "manifest-without-lock"
     ]
@@ -521,6 +572,12 @@ def test_public_pr_includes_policy_and_review_delta_without_source_content(monke
         "src/auth.py",
         "tests/test_auth.py",
     ]
+    assert audit["review_delta"]["changed_lanes"] == [
+        {"lane": ".", "changed_paths": 1},
+        {"lane": "src", "changed_paths": 1},
+        {"lane": "tests", "changed_paths": 1},
+    ]
+    assert audit["change_contracts"][0]["status"] == "present"
 
 
 def test_public_pull_request_flags_partial_file_list(monkeypatch):
@@ -543,7 +600,21 @@ def test_public_pull_request_flags_partial_file_list(monkeypatch):
             return [ChangedFile("src/app.py", additions=1)]
 
         def tree_snapshot(self, repository, ref, token=""):
-            return TreeSnapshot(["README.md", "src/app.py"])
+            return TreeSnapshot(["README.md", "src/app.py", ".qnode.json"])
+
+        def file_text(self, repository, path, ref, token=""):
+            return json.dumps(
+                {
+                    "version": 1,
+                    "change_contracts": [
+                        {
+                            "id": "app-tests",
+                            "when": ["src/app.py"],
+                            "require_all": ["tests/test_app.py"],
+                        }
+                    ],
+                }
+            )
 
     monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", PartialClient)
     response = (
@@ -551,4 +622,5 @@ def test_public_pull_request_flags_partial_file_list(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json["audit"]["files_truncated"] is True
+    assert response.json["audit"]["change_contracts"][0]["status"] == "unknown"
     assert "may be incomplete" in response.json["audit"]["markdown"]

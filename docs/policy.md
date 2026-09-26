@@ -10,13 +10,27 @@ Add a `.qnode.json` file at the repository root to tune advisory signals. QNode 
   "test_jobs": {
     "services/api/**": ["api-unit", "api-integration"],
     "packages/web/**": ["web-test"]
-  }
+  },
+  "change_contracts": [
+    {
+      "id": "api-schema-client",
+      "when": ["services/api/openapi/**"],
+      "require_all": ["tests/contracts/**"],
+      "require_any": ["packages/client/generated/**", "packages/client/src/**"],
+      "reason": "Keep contract tests and the client in sync with the API schema"
+    }
+  ]
 }
 ```
 
 - `ignore_paths` excludes matching files from heuristic PR warnings and companion suggestions. It does **not** hide credential-like paths or configured critical-path alerts. The Review Map still includes every changed file.
 - `critical_paths` marks matching changed paths as high-attention review prompts. It does not establish that the code is defective or determine true downstream impact.
 - `test_jobs` lists CI job names your team associates with paths. QNode reports these as **configured suggestions**; it does not run jobs or verify that those workflow jobs exist. Existing candidate test files are also shown per Review Map lane.
+- `change_contracts` declares path evidence expected in the **same pull request** when any `when` path changes. Every `require_all` pattern needs a matching changed path; `require_any` needs at least one match across its patterns. Rules are advisory. A present path does not prove the code or tests are correct. `reason` is an optional short explanation, not a note QNode can read or validate.
+
+QNode shows matching changed paths, expected patterns, present/missing/unknown status, review lane, and matching declared CODEOWNERS. On an incomplete PR file list, an absent companion is **unknown**, never "missing." Removed paths do not satisfy a contract or trigger a new one. `ignore_paths` does not suppress explicit contracts. A policy may define at most 20 uniquely named contracts, each with 1–8 total requirements. The usual score remains unchanged.
+
+Try a rule in the scanner's **Preview a change contract** panel before committing `.qnode.json`; the preview accepts a list of changed paths and makes no GitHub request. A [worked example](examples/change-contract-demo.md) shows both a missing and a complete result.
 
 Patterns are case-sensitive, repository-relative glob strings. `*` can match across `/`; `services/api/**` matches that directory's descendants. Invalid or oversized policies are ignored in full and produce a visible warning. QNode never executes the values in this file. The standard repository score is unchanged by the policy.
 

@@ -133,6 +133,63 @@ function renderDelta(delta) {
   if (delta.changed_paths.length) {
     container.append(makeElement("p", "section-note", `Changed paths: ${delta.changed_paths.slice(0, 8).join(", ")}${delta.changed_path_count > 8 ? " …" : ""}`));
   }
+  const lanes = document.querySelector("#delta-lanes");
+  lanes.replaceChildren();
+  const maximum = Math.max(1, ...(delta.changed_lanes || []).map((lane) => lane.changed_paths));
+  (delta.changed_lanes || []).slice(0, 12).forEach((lane) => {
+    const row = makeElement("div", "delta-lane");
+    row.append(makeElement("code", "", lane.lane === "." ? "Repository root" : `${lane.lane}/`));
+    const track = makeElement("div", "delta-track");
+    const bar = makeElement("span", "delta-bar");
+    bar.style.width = `${Math.max(4, Math.round(100 * lane.changed_paths / maximum))}%`;
+    track.append(bar);
+    row.append(track, makeElement("strong", "", `${lane.changed_paths}`));
+    lanes.append(row);
+  });
+}
+
+function contractCard(contract) {
+  const card = makeElement("article", `contract-card ${contract.status}`);
+  const heading = makeElement("div", "contract-heading");
+  heading.append(
+    makeElement("strong", "", contract.id),
+    makeElement("span", "contract-status", contract.status.toUpperCase()),
+  );
+  card.append(heading);
+  if (contract.reason) card.append(makeElement("p", "contract-reason", contract.reason));
+  const flow = makeElement("div", "evidence-flow");
+  const trigger = makeElement("div", "evidence-node");
+  trigger.append(makeElement("b", "", `CHANGED · ${contract.trigger_count}`));
+  contract.trigger_paths.forEach((path) => trigger.append(makeElement("code", "", path)));
+  const evidence = makeElement("div", "evidence-node");
+  evidence.append(makeElement("b", "", "EXPECTED COMPANIONS"));
+  contract.requirements.forEach((item) => {
+    const line = makeElement("div", `evidence-requirement ${item.status}`);
+    line.append(
+      makeElement("span", "", item.status.toUpperCase()),
+      makeElement("code", "", `${item.mode === "any" ? "one of: " : ""}${item.patterns.join(" | ")}`),
+    );
+    item.matched_paths.forEach((path) => line.append(makeElement("small", "", `matched: ${path}`)));
+    evidence.append(line);
+  });
+  const handoff = makeElement("div", "evidence-node");
+  handoff.append(
+    makeElement("b", "", "DECLARED HANDOFF"),
+    makeElement("span", "", contract.owners.length ? contract.owners.join(", ") : "No CODEOWNERS match supplied"),
+    makeElement("small", "", `Review lanes: ${contract.lanes.join(", ")}`),
+  );
+  flow.append(trigger, evidence, handoff);
+  card.append(flow);
+  return card;
+}
+
+function renderContracts(contracts) {
+  const section = document.querySelector("#contract-section");
+  const container = document.querySelector("#contract-list");
+  container.replaceChildren();
+  section.hidden = !lastReport?.pull_request || !contracts.length;
+  setText("#contract-count", `${contracts.length} ${contracts.length === 1 ? "RULE" : "RULES"}`);
+  contracts.forEach((contract) => container.append(contractCard(contract)));
 }
 
 function renderReviewMap(lanes) {
@@ -275,6 +332,7 @@ function renderReport(data) {
   renderPullRequest(data.pull_request);
   renderRisks(audit.risks);
   renderDelta(audit.review_delta);
+  renderContracts(audit.change_contracts || []);
   renderCompanions(audit.companion_suggestions || []);
   renderReviewMap(audit.review_map || []);
   report.hidden = false;
@@ -344,6 +402,37 @@ document.querySelector("#download-json").addEventListener("click", () => {
   link.click();
   URL.revokeObjectURL(url);
   actionMessage.textContent = "JSON downloaded.";
+});
+
+document.querySelector("#preview-button").addEventListener("click", async () => {
+  const message = document.querySelector("#preview-message");
+  const results = document.querySelector("#preview-results");
+  results.replaceChildren();
+  message.textContent = "";
+  let policy;
+  try {
+    policy = JSON.parse(document.querySelector("#preview-policy").value);
+  } catch {
+    message.textContent = "The policy is not valid JSON.";
+    return;
+  }
+  const changedPaths = document.querySelector("#preview-paths").value
+    .split(/\r?\n/).map((path) => path.trim()).filter(Boolean);
+  try {
+    const response = await fetch("/api/policy-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ policy, changed_paths: changedPaths }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Preview unavailable.");
+    message.textContent = data.change_contracts.length
+      ? `${data.change_contracts.length} rule(s) matched these changed paths.`
+      : "No declared rule matched these changed paths.";
+    data.change_contracts.forEach((contract) => results.append(contractCard(contract)));
+  } catch (error) {
+    message.textContent = error.message;
+  }
 });
 
 if (document.body.dataset.publicAudit === "true") {

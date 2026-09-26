@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-09-26
+
+- Add opt-in cross-file change contracts with exact present, missing, or unknown path evidence.
+- Show a visual Review Evidence Map and per-lane changes since the latest submitted review.
+- Add a safe policy preview without GitHub access and a worked API-schema demo.
+- Count successful public scans in the optional private SQLite owner dashboard without storing repository names.
 - Reject short production authentication secrets and GitHub App RSA keys below 2048 bits.
 - Validate configured App keys at startup and keep GitHub Check action descriptions within API limits.
 - Run Bandit alongside Ruff and the test suite in CI to catch security-sensitive Python patterns.

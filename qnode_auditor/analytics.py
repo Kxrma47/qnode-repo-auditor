@@ -25,7 +25,23 @@ class VisitorStore:
             "CREATE TABLE IF NOT EXISTS daily_views ("
             "day TEXT PRIMARY KEY, page_views INTEGER NOT NULL)"
         )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS daily_scans ("
+            "day TEXT NOT NULL, kind TEXT NOT NULL, scans INTEGER NOT NULL, "
+            "PRIMARY KEY(day, kind))"
+        )
         return connection
+
+    def record_scan(self, kind: str, *, now: datetime | None = None) -> None:
+        if kind not in {"repository", "pull_request"}:
+            raise ValueError("invalid scan kind")
+        now = now or datetime.now(UTC)
+        with closing(self._connection()) as connection, connection:
+            connection.execute(
+                "INSERT INTO daily_scans(day, kind, scans) VALUES (?, ?, 1) "
+                "ON CONFLICT(day, kind) DO UPDATE SET scans=scans+1",
+                (now.date().isoformat(), kind),
+            )
 
     def record(self, browser_token: str, *, now: datetime | None = None) -> None:
         now = now or datetime.now(UTC)
@@ -53,9 +69,15 @@ class VisitorStore:
             page_views = connection.execute(
                 "SELECT COALESCE(SUM(page_views), 0) FROM daily_views"
             ).fetchone()[0]
+            scan_rows = connection.execute(
+                "SELECT kind, SUM(scans) FROM daily_scans GROUP BY kind"
+            ).fetchall()
+        scans = dict(scan_rows)
         return {
             "unique_browsers": unique_browsers,
             "recent_browsers": recent_browsers or 0,
             "page_views": page_views,
             "since": first_seen,
+            "repository_scans": scans.get("repository", 0),
+            "pull_request_scans": scans.get("pull_request", 0),
         }
