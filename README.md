@@ -6,7 +6,7 @@
 
 **Know what to fix in a repository—and what to review carefully in a pull request.**
 
-[Try the scanner](https://qnode-repo-auditor.onrender.com) · [Install the GitHub App](https://github.com/apps/qnode-repository-auditor) · [Suggest a feature](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6) · [Report a bug](https://github.com/Kxrma47/qnode-repo-auditor/issues)
+[Try the scanner](https://qnode-repo-auditor.onrender.com) · [Preview a change contract](https://qnode-repo-auditor.onrender.com/#policy-simulator) · [Suggest a feature](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6) · [Report a bug](https://github.com/Kxrma47/qnode-repo-auditor/issues)
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14715/badge)](https://www.bestpractices.dev/projects/14715)
 
@@ -22,7 +22,7 @@ For teams with repeatable cross-file expectations, QNode can now answer a third 
 Try the [interactive change-contract preview](https://qnode-repo-auditor.onrender.com/#policy-simulator)
 or see the [worked example](docs/examples/change-contract-demo.md).
 
-The public scanner evaluates a public GitHub repository **or pull-request URL** and returns path evidence plus prioritized improvements. Reports have shareable URLs and can be copied as Markdown or exported as JSON. Install the GitHub App if you want advisory Checks to appear automatically on pull requests. QNode reads file paths and metadata, not application source contents, and never blocks a merge.
+The public scanner evaluates a public GitHub repository **or pull-request URL** and returns path evidence plus prioritized improvements. Reports have shareable URLs and can be copied as Markdown or exported as JSON. No App installation is needed. The hosted GitHub App is currently private and only provides automatic advisory Checks on the owner's installed repositories. QNode reads file paths and metadata, not application source contents, and never blocks a merge.
 
 Have a real review case QNode missed? [Tell us what signal you need](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6). Include a public example and expected result if you can; [Issues](https://github.com/Kxrma47/qnode-repo-auditor/issues) are best for reproducible bugs.
 
@@ -137,6 +137,9 @@ Operational readiness is available at `GET /health`.
 See the [API reference](docs/api.md) for request parameters, response fields, and error codes.
 
 ## GitHub App flow
+
+The hosted App is private. This section documents its behavior and the setup for someone
+running their own App; visitors can use the public scanner without installing anything.
 
 ```text
 pull_request / requested_action webhook
