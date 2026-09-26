@@ -15,7 +15,7 @@ import psycopg
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 
-from .analytics import PostgresVisitorStore, VisitorStore
+from .analytics import PostgresVisitorStore, VisitorStore, metrics_error_category
 from .audit import (
     ChangedFile,
     ReviewDelta,
@@ -87,7 +87,7 @@ def create_app(config: dict | None = None) -> Flask:
             try:
                 visitor_store.record_scan("pull_request" if is_pull_request else "repository")
             except (sqlite3.Error, psycopg.Error) as error:
-                LOGGER.warning("Scan metrics write failed: %s", type(error).__name__)
+                LOGGER.warning("Scan metrics write failed: %s", metrics_error_category(error))
 
     def installation_token(client: GitHubAppClient, payload: dict) -> str:
         installation_id = (payload.get("installation") or {}).get("id")
@@ -250,7 +250,7 @@ def create_app(config: dict | None = None) -> Flask:
         try:
             visitor_store.record(token)
         except (sqlite3.Error, psycopg.Error) as error:
-            LOGGER.warning("Visitor metrics write failed: %s", type(error).__name__)
+            LOGGER.warning("Visitor metrics write failed: %s", metrics_error_category(error))
             return ("", 503, {"Cache-Control": "no-store"})
         return ("", 204, {"Cache-Control": "no-store"})
 
@@ -291,7 +291,9 @@ def create_app(config: dict | None = None) -> Flask:
                     try:
                         usage = visitor_store.snapshot()
                     except (sqlite3.Error, psycopg.Error) as error:
-                        LOGGER.warning("Visitor metrics read failed: %s", type(error).__name__)
+                        LOGGER.warning(
+                            "Visitor metrics read failed: %s", metrics_error_category(error)
+                        )
                 response = app.make_response(
                     render_template(
                         "owner_metrics.html",
