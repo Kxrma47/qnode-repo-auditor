@@ -110,6 +110,83 @@ def test_scan_metrics_are_aggregate_only_and_survive_store_reopen(tmp_path):
         raise AssertionError("only aggregate scan kinds may be stored")
 
 
+def test_signal_feedback_is_one_current_vote_per_browser_and_category(tmp_path):
+    path = tmp_path / "visitors.sqlite3"
+    store = VisitorStore(str(path))
+    store.record_feedback("a" * 32, "workflow-change", True)
+    store.record_feedback("a" * 32, "workflow-change", False)
+    store.record_feedback("b" * 32, "workflow-change", True)
+    assert VisitorStore(str(path)).feedback_snapshot() == [
+        {"signal": "workflow-change", "useful": 1, "not_useful": 1}
+    ]
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute("SELECT visitor_hash, signal_key FROM signal_feedback").fetchall()
+    assert len(rows) == 2
+    assert {row[0] for row in rows} == {
+        hashlib.sha256(token.encode()).hexdigest() for token in ("a" * 32, "b" * 32)
+    }
+    assert all(row[1] == "workflow-change" for row in rows)
+
+
+def test_signal_feedback_endpoint_validates_origin_payload_dnt_and_private_view(
+    tmp_path, monkeypatch
+):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def app_installation_count(self):
+            return 1
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    app = create_app(
+        {
+            "TESTING": True,
+            "VISITOR_METRICS_DB": str(tmp_path / "visitors.sqlite3"),
+            "OWNER_METRICS_TOKEN": "owner-secret",
+        }
+    )
+    client = app.test_client()
+    payload = {"signal": "workflow-change", "useful": True}
+    headers = {"X-QNode-Feedback": "1", "Origin": "https://localhost"}
+    assert client.post("/api/signal-feedback", json=payload, headers=headers).status_code == 403
+    client.get("/")
+    assert client.post("/api/signal-feedback", json=payload).status_code == 403
+    assert (
+        client.post(
+            "/api/signal-feedback", json=payload, headers={**headers, "DNT": "1"}
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/api/signal-feedback",
+            json=payload,
+            headers={"X-QNode-Feedback": "1", "Origin": "https://evil.example"},
+        ).status_code
+        == 403
+    )
+    for bad in (
+        {"signal": "not-a-signal", "useful": True},
+        {"signal": [], "useful": True},
+        {"signal": "workflow-change", "useful": "yes"},
+    ):
+        assert client.post("/api/signal-feedback", json=bad, headers=headers).status_code == 400
+    assert client.post("/api/signal-feedback", json=payload, headers=headers).status_code == 204
+    assert (
+        client.post(
+            "/api/signal-feedback", json={**payload, "useful": False}, headers=headers
+        ).status_code
+        == 204
+    )
+    auth = {"Authorization": "Basic " + b64encode(b"Kxrma47:owner-secret").decode()}
+    page = client.get("/owner/metrics", headers=auth)
+    assert b"workflow-change" in page.data
+    assert b"0 useful" in page.data
+    assert b"1 not useful" in page.data
+    assert client.get("/owner/metrics").status_code == 401
+
+
 def test_private_website_metrics_and_beacon_validation(monkeypatch, tmp_path):
     class FakeClient:
         def __init__(self, **kwargs):

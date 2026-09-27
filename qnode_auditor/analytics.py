@@ -58,6 +58,12 @@ class VisitorStore:
             "day TEXT NOT NULL, kind TEXT NOT NULL, scans INTEGER NOT NULL, "
             "PRIMARY KEY(day, kind))"
         )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS signal_feedback ("
+            "visitor_hash TEXT NOT NULL, signal_key TEXT NOT NULL, useful INTEGER NOT NULL "
+            "CHECK(useful IN (0, 1)), updated_at TEXT NOT NULL, "
+            "PRIMARY KEY(visitor_hash, signal_key))"
+        )
         return connection
 
     def record_scan(self, kind: str, *, now: datetime | None = None) -> None:
@@ -86,6 +92,29 @@ class VisitorStore:
                 "ON CONFLICT(day) DO UPDATE SET page_views=page_views+1",
                 (now.date().isoformat(),),
             )
+
+    def record_feedback(
+        self, browser_token: str, signal_key: str, useful: bool, *, now: datetime | None = None
+    ) -> None:
+        now = now or datetime.now(UTC)
+        with closing(self._connection()) as connection, connection:
+            connection.execute(
+                "INSERT INTO signal_feedback(visitor_hash, signal_key, useful, updated_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(visitor_hash, signal_key) "
+                "DO UPDATE SET useful=excluded.useful, updated_at=excluded.updated_at",
+                (_visitor_hash(browser_token), signal_key, int(useful), now.isoformat()),
+            )
+
+    def feedback_snapshot(self) -> list[dict]:
+        with closing(self._connection()) as connection:
+            rows = connection.execute(
+                "SELECT signal_key, SUM(useful), COUNT(*)-SUM(useful) "
+                "FROM signal_feedback GROUP BY signal_key ORDER BY signal_key"
+            ).fetchall()
+        return [
+            {"signal": signal, "useful": int(yes), "not_useful": int(no)}
+            for signal, yes, no in rows
+        ]
 
     def snapshot(self, *, now: datetime | None = None) -> dict:
         now = now or datetime.now(UTC)
@@ -151,6 +180,12 @@ class PostgresVisitorStore:
                                 "day DATE NOT NULL, kind TEXT NOT NULL, scans BIGINT NOT NULL, "
                                 "PRIMARY KEY(day, kind))"
                             )
+                            connection.execute(
+                                "CREATE TABLE IF NOT EXISTS signal_feedback ("
+                                "visitor_hash TEXT NOT NULL, signal_key TEXT NOT NULL, "
+                                "useful BOOLEAN NOT NULL, updated_at TIMESTAMPTZ NOT NULL, "
+                                "PRIMARY KEY(visitor_hash, signal_key))"
+                            )
                         self._schema_ready = True
                     except Exception:
                         connection.close()
@@ -181,6 +216,30 @@ class PostgresVisitorStore:
                 "ON CONFLICT(day) DO UPDATE SET page_views=daily_views.page_views+1",
                 (now.date(),),
             )
+
+    def record_feedback(
+        self, browser_token: str, signal_key: str, useful: bool, *, now: datetime | None = None
+    ) -> None:
+        now = now or datetime.now(UTC)
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO signal_feedback(visitor_hash, signal_key, useful, updated_at) "
+                "VALUES (%s, %s, %s, %s) ON CONFLICT(visitor_hash, signal_key) "
+                "DO UPDATE SET useful=excluded.useful, updated_at=excluded.updated_at",
+                (_visitor_hash(browser_token), signal_key, useful, now),
+            )
+
+    def feedback_snapshot(self) -> list[dict]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT signal_key, COUNT(*) FILTER (WHERE useful), "
+                "COUNT(*) FILTER (WHERE NOT useful) FROM signal_feedback "
+                "GROUP BY signal_key ORDER BY signal_key"
+            ).fetchall()
+        return [
+            {"signal": signal, "useful": int(yes), "not_useful": int(no)}
+            for signal, yes, no in rows
+        ]
 
     def snapshot(self, *, now: datetime | None = None) -> dict:
         now = now or datetime.now(UTC)

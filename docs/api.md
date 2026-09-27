@@ -27,6 +27,14 @@ A successful response contains `repository` (public GitHub metadata), `ref` (res
 reference), `scanned_paths` (number of paths inspected), `cached` (whether the result came
 from the short-lived cache), and `audit`. Pull-request scans also contain `pull_request`
 (number, title, URL, state, head/base refs and SHAs, and change counts).
+Pull-request scans also contain `ci_evidence`: observed check-run names and states for the
+head commit, configured `.qnode.json` job-name matches, and `complete` for the bounded
+100-result latest-check listing. `available: false` means QNode could not read checks; `not_observed`
+means a configured label was not returned, not that a test failed or did not run.
+Legacy commit status contexts are not included.
+They also contain `review_handoff`: observed `facts`, unanswered `questions`, a bounded
+lane evidence matrix, `total_lanes`, and copy-ready `markdown`. Its questions are prompts
+for humans, not assertions that tests, approvals, or branch rules are satisfied.
 
 `audit` contains `score` (0–100), `grade` (A–F), `conclusion` (`success` or advisory
 `neutral`), `passed`, `total`, `checks`, `recommendations`, `risks`, `review_map`,
@@ -51,6 +59,30 @@ is disabled, Flask returns a standard 404 page instead.
 | `502` | GitHub request failed or GitHub was temporarily unreachable. |
 
 ## Other endpoints
+
+- `GET /api/attention?repository=OWNER/REPO`: five recently updated open PRs in a public
+  repository, ordered by observed check failures and changes since the latest submitted
+  human review. This is repository-wide, not a personal inbox or merge decision. Review
+  and check-listing failures are marked unavailable or incomplete. Results are cached in
+  process for up to one minute.
+- `GET /api/compare?repository=OWNER/REPO&base=REF&head=REF`: two path-based readiness
+  scores, their difference, and changed safeguard outcomes. Reads each ref separately;
+  a truncated tree returns `422`. Results use the five-minute in-process cache. It does
+  not compare runtime behavior or test results.
+- `GET /api/review-followup?repository=OWNER/REPO&pull=NUMBER`: on-demand, read-only
+  review-thread metadata for a public PR. Returns up to 50 unresolved thread links and
+  observed resolved/unresolved counts from at most 200 threads. `complete: false` means
+  counts can be incomplete. GitHub's `isOutdated` flag does not imply resolution. No
+  comment text is fetched. Uses a configured server-side GitHub API token or a short-lived
+  token from QNode's existing App installation; GitHub may restrict that installation's
+  access to unrelated public PRs. Results are cached in process for one minute. Missing
+  authentication returns `503`.
+- `POST /api/signal-feedback`: optional same-origin feedback for a path-level signal,
+  with JSON such as `{"signal":"workflow-change","useful":true}` and header
+  `X-QNode-Feedback: 1`. Requires the scanner's random browser cookie and configured
+  visitor store. One current vote per browser and signal category is kept; changing a
+  vote replaces it. Repositories, paths, and report content are not stored. Do Not Track
+  requests are rejected; the private owner page shows category totals only.
 
 - `POST /api/policy-preview`: send JSON with `policy` (the `.qnode.json` object),
   `changed_paths` (up to 1,000 repository-relative paths), and optional

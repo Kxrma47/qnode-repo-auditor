@@ -2,7 +2,8 @@
   "private": true,
   "scripts": {
     "check:js": "node --check qnode_auditor/static/app.js",
-    "lint:js": "eslint qnode_auditor/static/app.js --max-warnings 0"
+    "lint:js": "eslint qnode_auditor/static/app.js --max-warnings 0",
+    "test:js": "node --test tests/frontend.test.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

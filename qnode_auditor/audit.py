@@ -794,7 +794,7 @@ def _review_map(
                 additions=sum(file.additions for file in lane_files),
                 deletions=sum(file.deletions for file in lane_files),
                 signals=tuple(dict.fromkeys(risk.title for risk in signals)),
-                paths=tuple(file.filename for file in lane_files[:5]),
+                paths=tuple(file.filename for file in lane_files),
                 owners=owners,
                 unowned_files=unowned_files,
                 source_files=len(sources),
