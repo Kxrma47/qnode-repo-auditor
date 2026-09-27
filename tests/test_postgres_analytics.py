@@ -32,13 +32,26 @@ def test_postgres_metrics_are_durable_aggregate_and_tls_is_required(monkeypatch)
     monkeypatch.setattr(analytics.psycopg, "connect", connect_test_database)
     store = analytics.PostgresVisitorStore(dsn)
     before = store.snapshot()
+    feedback_before = next(
+        (row for row in store.feedback_snapshot() if row["signal"] == "workflow-change"),
+        {"useful": 0, "not_useful": 0},
+    )
     token = secrets.token_hex(16)
     now = datetime.now(UTC)
     store.record(token, now=now)
     store.record(token, now=now)
     store.record_scan("repository", now=now)
     store.record_scan("pull_request", now=now)
+    store.record_feedback(token, "workflow-change", True, now=now)
+    store.record_feedback(token, "workflow-change", False, now=now)
     after = analytics.PostgresVisitorStore(dsn).snapshot()
+    feedback_after = next(
+        row
+        for row in analytics.PostgresVisitorStore(dsn).feedback_snapshot()
+        if row["signal"] == "workflow-change"
+    )
+    assert feedback_after["useful"] == feedback_before["useful"]
+    assert feedback_after["not_useful"] == feedback_before["not_useful"] + 1
     assert after["unique_browsers"] == before["unique_browsers"] + 1
     assert after["page_views"] == before["page_views"] + 2
     assert after["repository_scans"] == before["repository_scans"] + 1
@@ -73,5 +86,5 @@ def test_postgres_metrics_are_durable_aggregate_and_tls_is_required(monkeypatch)
     ).test_client()
     response = owner.get("/owner/metrics", headers=auth)
     assert response.status_code == 200
-    assert f'{after["page_views"] + 1} page views'.encode() in response.data
+    assert f"{after['page_views'] + 1} page views".encode() in response.data
     assert response.headers["Cache-Control"] == "no-store, private"

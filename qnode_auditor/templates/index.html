@@ -89,7 +89,15 @@
         </div>
         <p class="input-help">Examples: <code>pallets/flask</code> · <code>github.com/owner/repo/pull/42</code> · <code>owner/repo#42</code></p>
         <p id="form-message" class="form-message" role="status" aria-live="polite"></p>
+        <button id="attention-button" type="button" class="ghost-button">Show open PR attention signals</button>
       </form>
+
+      <section id="attention-section" class="insight-section" hidden>
+        <div class="subheading"><span>RECENT OPEN PRS</span><b>REPOSITORY-WIDE</b></div>
+        <p class="section-note">Up to five recently updated open PRs. These observations are not personal assignments, required checks, or merge decisions.</p>
+        <p id="attention-message" role="status" aria-live="polite"></p>
+        <div id="attention-list" class="insight-list"></div>
+      </section>
 
       <details id="policy-simulator" class="policy-simulator">
         <summary>Preview a change contract without installing the App</summary>
@@ -151,6 +159,28 @@ src/client/api.ts</textarea>
           <div id="delta-signals" class="risk-grid"></div>
           <div id="delta-lanes" class="delta-lanes" aria-label="Areas changed since the latest submitted review"></div>
         </section>
+        <section id="ci-section" class="insight-section" hidden>
+          <div class="subheading"><span>OBSERVED CI CHECKS</span><b id="ci-count">0 CHECKS</b></div>
+          <p id="ci-summary" class="section-note"></p>
+          <div id="ci-list" class="insight-list"></div>
+        </section>
+        <section id="handoff-section" class="insight-section" hidden>
+          <div class="subheading"><span>REVIEW HANDOFF</span><b id="handoff-count">0 LANES</b></div>
+          <p class="section-note">One place to see observed metadata, lane evidence, and the questions a contributor should answer. No approval, coverage, or merge decision is inferred.</p>
+          <div class="handoff-columns">
+            <div><h4>Observed</h4><ul id="handoff-facts"></ul></div>
+            <div><h4>Needs an answer</h4><ul id="handoff-questions"></ul></div>
+          </div>
+          <div id="handoff-lanes" class="handoff-lanes"></div>
+          <button id="copy-handoff" type="button" class="ghost-button">Copy editable handoff</button>
+        </section>
+        <section id="followup-section" class="insight-section" hidden>
+          <div class="subheading"><span>REVIEW FOLLOW-UP</span><b id="followup-count">ON DEMAND</b></div>
+          <p class="section-note">Find unresolved review threads, including those GitHub marks outdated. Outdated does not mean addressed. QNode reads thread status and links, not comment text, and never resolves threads.</p>
+          <button id="followup-button" type="button" class="ghost-button">Load review threads</button>
+          <p id="followup-message" class="section-note" role="status" aria-live="polite"></p>
+          <div id="followup-list" class="insight-list"></div>
+        </section>
         <section id="contract-section" class="contract-section" hidden>
           <div class="subheading"><span>DECLARED REVIEW EVIDENCE</span><b id="contract-count">0 RULES</b></div>
           <p class="section-note">Repository-defined path relationships, not code dependencies or test coverage. Missing evidence means no matching changed path was seen; partial PR lists show unknown.</p>
@@ -164,7 +194,25 @@ src/client/api.ts</textarea>
         <section id="review-map-section" class="review-map-section" hidden>
           <div class="subheading"><span>REVIEW MAP</span><b id="lane-count">0 LANES</b></div>
           <p class="section-note">Changed files grouped by lane, with CODEOWNERS, candidate test targets, configured CI jobs, and focused review questions. Path matches are prompts—not proof of coverage.</p>
+          <div class="focus-controls" role="group" aria-label="Review map path filter">
+            <button type="button" class="ghost-button active" data-focus="all" aria-pressed="true">All paths</button>
+            <button type="button" class="ghost-button" data-focus="source" aria-pressed="false">Source only</button>
+            <button type="button" class="ghost-button" data-focus="generated" aria-pressed="false">Hide generated</button>
+            <button type="button" class="ghost-button" data-focus="review" aria-pressed="false">Since review</button>
+          </div>
+          <p id="focus-message" class="section-note"></p>
           <div id="review-lanes" class="review-lanes"></div>
+        </section>
+        <section id="compare-section" class="insight-section">
+          <div class="subheading"><span>BEFORE / AFTER</span><b>ON-DEMAND REF COMPARISON</b></div>
+          <p class="section-note">Compare path-based safeguard scores at two Git refs. This is not a test-run or code-behavior comparison.</p>
+          <div class="compare-controls">
+            <label for="compare-base">Base ref<input id="compare-base" placeholder="main" spellcheck="false"></label>
+            <label for="compare-head">Head ref<input id="compare-head" placeholder="feature or SHA" spellcheck="false"></label>
+            <button id="compare-button" type="button" class="ghost-button">Compare refs</button>
+          </div>
+          <p id="compare-message" role="status" aria-live="polite"></p>
+          <div id="compare-results"></div>
         </section>
         <div class="report-actions">
           <button id="share-report" class="ghost-button" type="button">Copy report link</button>
@@ -198,7 +246,7 @@ src/client/api.ts</textarea>
         <article>
           <span class="card-index">03</span>
           <h3>Review map</h3>
-          <p>Splits pull requests into logical lanes, maps CODEOWNERS and candidate tests, and visualizes repository-declared companion evidence.</p>
+          <p>Splits pull requests into logical lanes, maps CODEOWNERS and candidate tests, filters review paths, and explains observed CI checks.</p>
         </article>
         <article>
           <span class="card-index">04</span>
@@ -212,7 +260,7 @@ src/client/api.ts</textarea>
   <footer class="shell">
     <span>QNODE // ENGINEERING SIGNALS, NOT SECURITY CERTIFICATION</span>
     {% if visitor_metrics_enabled %}
-    <span>Private usage count: random browser token and page views only; no IP or scan details stored. Do Not Track is respected.</span>
+    <span>Optional private usage counts and signal-category votes; no IP, repository, or scan details stored. Do Not Track is respected.</span>
     {% endif %}
     <a href="mailto:mahidulhaqalif@gmail.com">Contact</a>
   </footer>

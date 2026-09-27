@@ -26,6 +26,7 @@ from .audit import (
     find_codeowners_path,
 )
 from .github import MAX_PR_FILES, GitHubAppClient, TreeSnapshot, compare_trees
+from .insights import attention_item, ci_evidence, compare_audits, review_handoff
 from .policy import POLICY_PATH, AuditPolicy, parse_policy
 from .security import validate_secret_strength, verify_signature
 
@@ -35,6 +36,22 @@ REF_PATTERN = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 PULL_PATTERN = re.compile(r"^[1-9][0-9]{0,9}$")
 PULL_REQUEST_ACTIONS = {"opened", "reopened", "synchronize", "ready_for_review"}
 BROWSER_TOKEN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+FEEDBACK_SIGNAL_KEYS = frozenset(
+    {
+        "source-without-tests",
+        "manifest-without-lock",
+        "workflow-change",
+        "credential-path",
+        "large-change",
+        "migration-change",
+        "critical-path",
+        "critical-path-overflow",
+    }
+)
+
+
+def valid_ref(value: str) -> bool:
+    return bool(REF_PATTERN.fullmatch(value) and ".." not in value and not value.startswith("/"))
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -73,6 +90,9 @@ def create_app(config: dict | None = None) -> Flask:
         visitor_store = VisitorStore(app.config["VISITOR_METRICS_DB"])
 
     public_cache: dict[tuple[str, str], tuple[float, dict]] = {}
+    attention_cache: dict[str, tuple[float, dict]] = {}
+    comparison_cache: dict[tuple[str, str, str], tuple[float, dict]] = {}
+    followup_cache: dict[tuple[str, int], tuple[float, dict]] = {}
     processed_deliveries: dict[str, float] = {}
 
     def github_client() -> GitHubAppClient:
@@ -254,12 +274,50 @@ def create_app(config: dict | None = None) -> Flask:
             return ("", 503, {"Cache-Control": "no-store"})
         return ("", 204, {"Cache-Control": "no-store"})
 
+    @app.post("/api/signal-feedback")
+    def signal_feedback():
+        if not app.config["PUBLIC_AUDIT_ENABLED"] or not visitor_store:
+            abort(404)
+        token = request.cookies.get("qnode_browser", "")
+        origin = request.headers.get("Origin", "")
+        parsed_origin = urlsplit(origin)
+        if (
+            not BROWSER_TOKEN_PATTERN.fullmatch(token)
+            or request.headers.get("X-QNode-Feedback") != "1"
+            or request.headers.get("DNT") == "1"
+            or (
+                origin
+                and (
+                    parsed_origin.netloc != request.host
+                    or parsed_origin.scheme not in {"http", "https"}
+                )
+            )
+        ):
+            abort(403)
+        if request.content_length is None or request.content_length > 512 or not request.is_json:
+            return jsonify(error="Invalid feedback body."), 400
+        values = request.get_json(silent=True)
+        if (
+            not isinstance(values, dict)
+            or set(values) != {"signal", "useful"}
+            or not isinstance(values["signal"], str)
+            or values["signal"] not in FEEDBACK_SIGNAL_KEYS
+            or type(values["useful"]) is not bool
+        ):
+            return jsonify(error="Choose a reported signal and helpfulness."), 400
+        try:
+            visitor_store.record_feedback(token, values["signal"], values["useful"])
+        except (sqlite3.Error, psycopg.Error) as error:
+            LOGGER.warning("Signal feedback write failed: %s", metrics_error_category(error))
+            return jsonify(error="Feedback is temporarily unavailable."), 503
+        return ("", 204, {"Cache-Control": "no-store"})
+
     @app.get("/health")
     def health():
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.8.0",
+            version="0.9.0",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
             owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),
@@ -287,9 +345,11 @@ def create_app(config: dict | None = None) -> Flask:
                 response = app.make_response(("GitHub installation count unavailable.", 502))
             else:
                 usage = None
+                feedback = None
                 if visitor_store:
                     try:
                         usage = visitor_store.snapshot()
+                        feedback = visitor_store.feedback_snapshot()
                     except (sqlite3.Error, psycopg.Error) as error:
                         LOGGER.warning(
                             "Visitor metrics read failed: %s", metrics_error_category(error)
@@ -299,6 +359,7 @@ def create_app(config: dict | None = None) -> Flask:
                         "owner_metrics.html",
                         installations=installations,
                         usage=usage,
+                        feedback=feedback,
                         visitor_metrics_enabled=bool(visitor_store),
                     )
                 )
@@ -364,11 +425,7 @@ def create_app(config: dict | None = None) -> Flask:
         requested_pull = str(values.get("pull", "")).strip()
         if not REPOSITORY_PATTERN.fullmatch(repository):
             return jsonify(error="Use a repository in owner/name format."), 400
-        if requested_ref and (
-            not REF_PATTERN.fullmatch(requested_ref)
-            or ".." in requested_ref
-            or requested_ref.startswith("/")
-        ):
+        if requested_ref and not valid_ref(requested_ref):
             return jsonify(error="The requested Git ref is not valid."), 400
         if requested_pull and not PULL_PATTERN.fullmatch(requested_pull):
             return jsonify(error="The pull request number is not valid."), 400
@@ -430,6 +487,12 @@ def create_app(config: dict | None = None) -> Flask:
                     policy,
                     token,
                 )
+            checks = None
+            if pull:
+                try:
+                    checks = client.check_runs(repository, pull["head_sha"], token)
+                except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                    LOGGER.warning("PR check listing unavailable")
         except requests.HTTPError as error:
             status = error.response.status_code if error.response is not None else 502
             if status == 404:
@@ -442,21 +505,192 @@ def create_app(config: dict | None = None) -> Flask:
             LOGGER.warning("Public GitHub audit network failure: %s", error)
             return jsonify(error="GitHub is temporarily unreachable."), 502
 
+        audit_data = audit.to_dict()
         response = {
             "repository": info,
             "ref": ref,
             "scanned_paths": len(snapshot.paths),
             "cached": False,
-            "audit": audit.to_dict(),
+            "audit": audit_data,
         }
         if pull:
             response["pull_request"] = pull
+            response["ci_evidence"] = ci_evidence(checks, audit_data["review_map"])
+            response["review_handoff"] = review_handoff(pull, audit_data, response["ci_evidence"])
         public_cache[cache_key] = (time.monotonic(), response)
         if len(public_cache) > 256:
             oldest = min(public_cache, key=lambda key: public_cache[key][0])
             public_cache.pop(oldest, None)
         record_successful_scan(bool(requested_pull))
         return jsonify(response)
+
+    @app.get("/api/attention")
+    def attention_queue():
+        if not app.config["PUBLIC_AUDIT_ENABLED"]:
+            abort(404)
+        repository = request.args.get("repository", "").strip()
+        if not REPOSITORY_PATTERN.fullmatch(repository):
+            return jsonify(error="Use a repository in owner/name format."), 400
+        cached = attention_cache.get(repository.lower())
+        if cached and time.monotonic() - cached[0] < 60:
+            return jsonify(cached[1] | {"cached": True})
+        try:
+            client = github_client()
+            token = app.config["GITHUB_PUBLIC_TOKEN"]
+            info = client.repository_info(repository, token)
+            if info["visibility"] != "public":
+                return jsonify(error="Repository not found or not public."), 404
+            pulls = client.open_pull_requests(repository, token, limit=5)
+            items = []
+            for pull in pulls:
+                review_available = True
+                try:
+                    review = client.latest_submitted_review(repository, pull["number"], token)
+                except (requests.RequestException, ValueError, KeyError, TypeError):
+                    review = None
+                    review_available = False
+                try:
+                    checks = client.check_runs(repository, pull["head_sha"], token)
+                except (requests.RequestException, ValueError, KeyError, TypeError):
+                    checks = None
+                items.append(
+                    attention_item(pull, review, checks, review_available=review_available)
+                )
+        except requests.HTTPError as error:
+            status = error.response.status_code if error.response is not None else 502
+            if status == 404:
+                return jsonify(error="Repository not found or not public."), 404
+            if status in {403, 429}:
+                return jsonify(error="GitHub API rate limit reached. Try again later."), 429
+            return jsonify(error="GitHub could not load open pull requests."), 502
+        except requests.RequestException:
+            return jsonify(error="GitHub is temporarily unreachable."), 502
+        result = dict(
+            repository=info["full_name"],
+            items=sorted(items, key=lambda item: item["priority"]),
+            scope=(
+                "Up to five recently updated open PRs; signals are not personal assignments "
+                "or merge requirements."
+            ),
+            cached=False,
+        )
+        attention_cache[repository.lower()] = (time.monotonic(), result)
+        if len(attention_cache) > 128:
+            attention_cache.pop(next(iter(attention_cache)))
+        return jsonify(result)
+
+    @app.get("/api/review-followup")
+    def review_followup():
+        if not app.config["PUBLIC_AUDIT_ENABLED"]:
+            abort(404)
+        repository = request.args.get("repository", "").strip()
+        requested_pull = request.args.get("pull", "").strip()
+        if not REPOSITORY_PATTERN.fullmatch(repository) or not PULL_PATTERN.fullmatch(
+            requested_pull
+        ):
+            return jsonify(error="Provide a public repository and pull request number."), 400
+        number = int(requested_pull)
+        cache_key = (repository.lower(), number)
+        cached = followup_cache.get(cache_key)
+        if cached and time.monotonic() - cached[0] < 60:
+            return jsonify(cached[1] | {"cached": True})
+        try:
+            client = github_client()
+            info = client.repository_info(repository, "")
+            if info["visibility"] != "public":
+                return jsonify(error="Repository or pull request not found or not public."), 404
+            token = app.config["GITHUB_PUBLIC_TOKEN"]
+            if not token and app.config["GITHUB_INSTALLATION_ID"]:
+                token = client.installation_token(int(app.config["GITHUB_INSTALLATION_ID"]))
+            if not token:
+                return jsonify(error="Review follow-up needs GitHub API authentication."), 503
+            snapshot = client.review_threads(info["full_name"], number, token)
+        except requests.HTTPError as error:
+            status = error.response.status_code if error.response is not None else 502
+            if status == 404:
+                return jsonify(error="Repository or pull request not found or not public."), 404
+            if status in {403, 429}:
+                return jsonify(error="GitHub API rate limit reached. Try again later."), 429
+            return jsonify(error="GitHub could not load review threads."), 502
+        except LookupError:
+            return jsonify(error="Repository or pull request not found or not public."), 404
+        except (requests.RequestException, ValueError, KeyError, TypeError):
+            return jsonify(error="Review thread evidence is temporarily unavailable."), 502
+        unresolved = [thread for thread in snapshot["threads"] if not thread["resolved"]]
+        result = {
+            "repository": info["full_name"],
+            "pull": number,
+            "complete": snapshot["complete"],
+            "total": snapshot["total"],
+            "observed_unresolved": len(unresolved),
+            "observed_resolved": len(snapshot["threads"]) - len(unresolved),
+            "threads": sorted(
+                unresolved, key=lambda thread: (not thread["outdated"], thread["path"])
+            )[:50],
+            "cached": False,
+            "note": "Read-only review-thread metadata; outdated does not mean addressed.",
+        }
+        followup_cache[cache_key] = (time.monotonic(), result)
+        if len(followup_cache) > 128:
+            followup_cache.pop(next(iter(followup_cache)))
+        return jsonify(result)
+
+    @app.get("/api/compare")
+    def compare_refs():
+        if not app.config["PUBLIC_AUDIT_ENABLED"]:
+            abort(404)
+        repository = request.args.get("repository", "").strip()
+        base_ref = request.args.get("base", "").strip()
+        head_ref = request.args.get("head", "").strip()
+        if not REPOSITORY_PATTERN.fullmatch(repository):
+            return jsonify(error="Use a repository in owner/name format."), 400
+        if not valid_ref(base_ref) or not valid_ref(head_ref):
+            return jsonify(error="Provide valid base and head Git refs."), 400
+        cache_key = (repository.lower(), base_ref, head_ref)
+        cached = comparison_cache.get(cache_key)
+        if cached and time.monotonic() - cached[0] < app.config["AUDIT_CACHE_SECONDS"]:
+            return jsonify(cached[1] | {"cached": True})
+        try:
+            client = github_client()
+            token = app.config["GITHUB_PUBLIC_TOKEN"]
+            info = client.repository_info(repository, token)
+            if info["visibility"] != "public":
+                return jsonify(error="Repository or ref not found, or it is not public."), 404
+            audits = []
+            for ref in (base_ref, head_ref):
+                snapshot = client.tree_snapshot(repository, ref, token)
+                if snapshot.truncated:
+                    return jsonify(
+                        error="GitHub truncated a tree; a reliable comparison is unavailable."
+                    ), 422
+                codeowners_path = find_codeowners_path(snapshot.paths)
+                codeowners_content = (
+                    client.file_text(repository, codeowners_path, ref, token)
+                    if codeowners_path
+                    else ""
+                )
+                policy = repository_policy(client, repository, ref, token, snapshot.paths)
+                audits.append(
+                    audit_tree(snapshot.paths, codeowners_content=codeowners_content, policy=policy)
+                )
+        except requests.HTTPError as error:
+            status = error.response.status_code if error.response is not None else 502
+            if status == 404:
+                return jsonify(error="Repository or ref not found, or it is not public."), 404
+            if status in {403, 429}:
+                return jsonify(error="GitHub API rate limit reached. Try again later."), 429
+            return jsonify(error="GitHub could not compare these refs."), 502
+        except requests.RequestException:
+            return jsonify(error="GitHub is temporarily unreachable."), 502
+        result = dict(
+            repository=info["full_name"],
+            comparison=compare_audits(audits[0], audits[1], base_ref, head_ref),
+            cached=False,
+        )
+        comparison_cache[cache_key] = (time.monotonic(), result)
+        if len(comparison_cache) > 128:
+            comparison_cache.pop(next(iter(comparison_cache)))
+        return jsonify(result)
 
     @app.post("/webhook")
     def webhook():

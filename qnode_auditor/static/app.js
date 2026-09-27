@@ -5,6 +5,7 @@ const formMessage = document.querySelector("#form-message");
 const report = document.querySelector("#report");
 const actionMessage = document.querySelector("#action-message");
 let lastReport = null;
+let reviewFocus = "all";
 
 const setText = (selector, value) => {
   document.querySelector(selector).textContent = value;
@@ -91,6 +92,7 @@ function renderRisks(risks) {
     container.append(empty);
     return;
   }
+  const feedbackShown = new Set();
   risks.forEach((risk) => {
     const card = makeElement("article", `risk-card ${risk.severity}`);
     const header = makeElement("div", "risk-header");
@@ -101,7 +103,67 @@ function renderRisks(risks) {
     card.append(header, makeElement("p", "", risk.detail));
     if (risk.path) card.append(makeElement("code", "risk-path", risk.path));
     if (risk.recommendation) card.append(makeElement("p", "risk-fix", risk.recommendation));
+    if (document.body.dataset.visitorMetrics === "true" && navigator.doNotTrack !== "1"
+      && !feedbackShown.has(risk.key)) {
+      feedbackShown.add(risk.key);
+      const controls = makeElement("div", "signal-feedback");
+      const status = makeElement("span", "signal-feedback-status");
+      const voteButtons = [];
+      controls.append(makeElement("small", "", "Was this signal useful?"));
+      [true, false].forEach((useful) => {
+        const button = makeElement("button", "ghost-button", useful ? "Yes" : "No");
+        button.type = "button";
+        button.setAttribute("aria-pressed", "false");
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            const response = await fetch("/api/signal-feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-QNode-Feedback": "1" },
+              credentials: "same-origin",
+              body: JSON.stringify({ signal: risk.key, useful }),
+            });
+            if (!response.ok) throw new Error("Feedback could not be saved.");
+            voteButtons.forEach((item) => item.setAttribute("aria-pressed", item === button ? "true" : "false"));
+            status.textContent = "Thanks. Your latest vote for this signal category was saved.";
+          } catch {
+            status.textContent = "Feedback could not be saved. Please try again.";
+          } finally {
+            button.disabled = false;
+          }
+        });
+        voteButtons.push(button);
+        controls.append(button);
+      });
+      controls.append(status);
+      card.append(controls);
+    }
     container.append(card);
+  });
+}
+
+function renderFollowup(data) {
+  const list = document.querySelector("#followup-list");
+  list.replaceChildren();
+  setText("#followup-count", `${data.observed_unresolved} OBSERVED OPEN`);
+  const scope = data.complete ? "Complete GitHub thread listing." : "First 200 threads only; counts may be incomplete.";
+  const more = data.observed_unresolved > data.threads.length
+    ? ` Showing the first ${data.threads.length} unresolved threads.` : "";
+  setText("#followup-message", `${scope} ${data.observed_unresolved} unresolved, ${data.observed_resolved} resolved observed.${more} Outdated does not mean addressed.`);
+  if (!data.observed_unresolved) {
+    list.append(makeElement("p", "section-note", data.complete
+      ? "No unresolved review threads were found." : "No unresolved thread appeared in this bounded listing."));
+    return;
+  }
+  data.threads.forEach((thread) => {
+    const row = makeElement("article", "insight-row");
+    row.append(makeElement("strong", "insight-state", thread.outdated ? "OUTDATED · OPEN" : "OPEN"));
+    const link = makeElement("a", "", thread.path);
+    link.href = thread.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    row.append(link);
+    list.append(row);
   });
 }
 
@@ -197,9 +259,29 @@ function renderReviewMap(lanes) {
   const container = document.querySelector("#review-lanes");
   container.replaceChildren();
   section.hidden = !lastReport?.pull_request;
-  setText("#lane-count", `${lanes.length} ${lanes.length === 1 ? "LANE" : "LANES"}`);
+  const delta = lastReport?.audit.review_delta;
+  const changed = new Set(delta?.changed_paths || []);
+  const sourcePath = (path) => /\.(?:py|js|jsx|ts|tsx|go|rs|java|kt|c|cc|cpp|h|hpp|cs|rb|php|swift|scala)$/.test(path)
+    && !/(?:^|\/)(?:tests?|__tests__|specs?|fixtures?)\//.test(path)
+    && !/(?:test|spec)\.[^.]+$/.test(path);
+  const generatedPath = (path) => /(?:^|\/)(?:generated|gen|dist|build|vendor|node_modules)\//i.test(path)
+    || /(?:\.min\.(?:js|css)|\.g\.(?:py|go)|\.generated\.)/i.test(path);
+  const visible = lanes.map((lane) => ({ ...lane, visiblePaths: lane.paths.filter((path) =>
+    reviewFocus === "all" || (reviewFocus === "source" && sourcePath(path))
+      || (reviewFocus === "generated" && !generatedPath(path))
+      || (reviewFocus === "review" && changed.has(path)),
+  ) })).filter((lane) => lane.visiblePaths.length);
+  setText("#lane-count", `${visible.length}/${lanes.length} LANES`);
+  setText("#focus-message", reviewFocus === "review" && !delta
+    ? "No complete submitted-review comparison is available for this PR."
+    : reviewFocus === "review" && !visible.length
+      ? "No file in the current PR appears in the since-review tree difference. Other repository paths may still have changed."
+      : `${visible.reduce((count, lane) => count + lane.visiblePaths.length, 0)} visible paths. Filters affect the display only; signals and exported evidence remain unchanged.`);
+  if (!visible.length) {
+    container.append(makeElement("p", "section-note", "No paths match this display filter."));
+  }
 
-  lanes.forEach((lane) => {
+  visible.forEach((lane) => {
     const card = makeElement("article", `review-lane ${lane.attention}`);
     const header = makeElement("div", "lane-header");
     header.append(
@@ -209,7 +291,7 @@ function renderReviewMap(lanes) {
     const metrics = makeElement(
       "p",
       "lane-metrics",
-      `${lane.file_count} ${lane.file_count === 1 ? "file" : "files"} · +${lane.additions} / −${lane.deletions}`,
+      `${lane.visiblePaths.length}/${lane.file_count} visible files · full lane +${lane.additions} / −${lane.deletions}`,
     );
     const focus = makeElement(
       "p",
@@ -235,7 +317,8 @@ function renderReviewMap(lanes) {
       questions.append(makeElement("li", "", question));
     });
     const paths = makeElement("div", "lane-paths");
-    lane.paths.forEach((path) => paths.append(makeElement("code", "", path)));
+    lane.visiblePaths.slice(0, 30).forEach((path) => paths.append(makeElement("code", "", path)));
+    if (lane.visiblePaths.length > 30) paths.append(makeElement("small", "", `${lane.visiblePaths.length - 30} more visible paths in JSON export`));
     const targets = makeElement("p", "lane-tests", lane.test_targets?.length
       ? `Candidate test targets: ${lane.test_targets.join(", ")}`
       : "No existing same-lane test target detected");
@@ -245,6 +328,92 @@ function renderReviewMap(lanes) {
     card.append(header, metrics, focus, ownership, testEvidence, targets, jobs, questions, paths);
     container.append(card);
   });
+}
+
+function renderCi(evidence) {
+  const section = document.querySelector("#ci-section");
+  const container = document.querySelector("#ci-list");
+  container.replaceChildren();
+  section.hidden = !lastReport?.pull_request;
+  if (!lastReport?.pull_request) return;
+  if (!evidence?.available) {
+    setText("#ci-count", "UNAVAILABLE");
+    setText("#ci-summary", "GitHub check-run evidence was unavailable. QNode cannot infer whether tests ran.");
+    return;
+  }
+  setText("#ci-count", `${evidence.observed.length} OBSERVED`);
+  setText("#ci-summary", `${evidence.complete ? "Complete latest-check listing" : "First 100 latest checks only; listing incomplete"}. Configured job labels are hints, not required-check or test-execution proof.`);
+  evidence.observed.forEach((run) => {
+    const row = makeElement("div", `insight-row ${run.state}`);
+    row.append(makeElement("span", "insight-state", run.state.toUpperCase()));
+    const title = makeElement("strong", "", run.name || "Unnamed check");
+    if (run.html_url && /^https:\/\//.test(run.html_url)) {
+      const link = makeElement("a", "", title.textContent);
+      link.href = run.html_url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      row.append(link);
+    } else row.append(title);
+    if (run.configured) row.append(makeElement("small", "", "Mapped in .qnode.json"));
+    container.append(row);
+  });
+  evidence.not_observed.forEach((name) => {
+    const row = makeElement("div", "insight-row unknown");
+    row.append(makeElement("span", "insight-state", "NOT OBSERVED"), makeElement("strong", "", name));
+    container.append(row);
+  });
+  if (!evidence.observed.length && !evidence.not_observed.length) {
+    container.append(makeElement("p", "section-note", "No check runs were returned for this commit."));
+  }
+}
+
+function renderHandoff(handoff) {
+  const section = document.querySelector("#handoff-section");
+  const facts = document.querySelector("#handoff-facts");
+  const questions = document.querySelector("#handoff-questions");
+  const lanes = document.querySelector("#handoff-lanes");
+  facts.replaceChildren();
+  questions.replaceChildren();
+  lanes.replaceChildren();
+  section.hidden = !lastReport?.pull_request || !handoff;
+  if (section.hidden) return;
+  setText("#handoff-count", `${handoff.total_lanes} ${handoff.total_lanes === 1 ? "LANE" : "LANES"}`);
+  handoff.facts.forEach((fact) => facts.append(makeElement("li", "", fact)));
+  handoff.questions.slice(0, 12).forEach((question) => questions.append(makeElement("li", "", question)));
+  handoff.lanes.slice(0, 8).forEach((lane) => {
+    const card = makeElement("article", `handoff-lane ${lane.attention}`);
+    card.append(makeElement("strong", "", `${lane.label} · ${lane.files} ${lane.files === 1 ? "file" : "files"}`));
+    card.append(makeElement("p", "", lane.owners.length
+      ? `Declared owners: ${lane.owners.join(", ")}${lane.unowned_files ? ` · ${lane.unowned_files} paths unowned` : ""}`
+      : "No declared CODEOWNERS match"));
+    card.append(makeElement("p", "", lane.source_files
+      ? `Changed test-path matches: ${lane.test_path_matches}/${lane.source_files} source files; not coverage.`
+      : "No changed source file needs a test-path match in this lane."));
+    card.append(makeElement("p", "", lane.jobs.length
+      ? `Mapped checks: ${lane.jobs.map((job) => `${job.name} (${job.states.join("/")})`).join(", ")}`
+      : "No CI job mapping configured; test execution is unknown."));
+    lanes.append(card);
+  });
+  if (handoff.total_lanes > 8) {
+    lanes.append(makeElement("p", "section-note", `${handoff.total_lanes - 8} more lanes in the JSON export.`));
+  }
+}
+
+function renderComparison(comparison) {
+  const container = document.querySelector("#compare-results");
+  container.replaceChildren();
+  [comparison.base, comparison.head].forEach((point) => {
+    const row = makeElement("div", "compare-row");
+    row.append(makeElement("code", "", point.ref), makeElement("strong", "", `${point.score}/100 · ${point.grade}`));
+    const track = makeElement("div", "compare-track");
+    const bar = makeElement("span", "compare-bar");
+    bar.style.width = `${point.score}%`;
+    track.append(bar);
+    row.append(track);
+    container.append(row);
+  });
+  container.append(makeElement("p", "section-note", `Score change: ${comparison.score_delta > 0 ? "+" : ""}${comparison.score_delta} points. ${comparison.note}`));
+  comparison.changed_checks.forEach((check) => container.append(makeElement("p", "section-note", `${check.after ? "Gained" : "Lost"}: ${check.label}`)));
 }
 
 function renderCompanions(suggestions) {
@@ -293,7 +462,7 @@ function renderPullRequest(pull) {
   link.rel = "noreferrer";
   title.append(link);
   setText("#pull-state", pull.draft ? "DRAFT" : pull.state.toUpperCase());
-  setText("#pull-files", `${pull.changed_files} FILES`);
+  setText("#pull-files", `${pull.changed_files} ${pull.changed_files === 1 ? "FILE" : "FILES"}`);
   setText("#pull-lines", `+${pull.additions.toLocaleString()} / −${pull.deletions.toLocaleString()}`);
 }
 
@@ -332,12 +501,112 @@ function renderReport(data) {
   renderPullRequest(data.pull_request);
   renderRisks(audit.risks);
   renderDelta(audit.review_delta);
+  renderCi(data.ci_evidence);
+  renderHandoff(data.review_handoff);
+  const followupSection = document.querySelector("#followup-section");
+  followupSection.hidden = !data.pull_request;
+  document.querySelector("#followup-list").replaceChildren();
+  setText("#followup-count", "ON DEMAND");
+  setText("#followup-message", "");
   renderContracts(audit.change_contracts || []);
   renderCompanions(audit.companion_suggestions || []);
   renderReviewMap(audit.review_map || []);
+  document.querySelector("#compare-base").value = data.pull_request?.base_sha || repository.default_branch || "";
+  document.querySelector("#compare-head").value = data.pull_request?.head_sha || data.ref || "";
+  document.querySelector("#compare-results").replaceChildren();
+  setText("#compare-message", "");
   report.hidden = false;
   report.scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+document.querySelectorAll("[data-focus]").forEach((button) => {
+  button.addEventListener("click", () => {
+    reviewFocus = button.dataset.focus;
+    document.querySelectorAll("[data-focus]").forEach((item) => {
+      item.classList.toggle("active", item === button);
+      item.setAttribute("aria-pressed", item === button ? "true" : "false");
+    });
+    if (lastReport) renderReviewMap(lastReport.audit.review_map || []);
+  });
+});
+
+document.querySelector("#attention-button").addEventListener("click", async () => {
+  const target = parseTarget(repositoryInput.value);
+  if (!target) {
+    formMessage.textContent = "Enter a public owner/repository first.";
+    return;
+  }
+  const section = document.querySelector("#attention-section");
+  const container = document.querySelector("#attention-list");
+  const button = document.querySelector("#attention-button");
+  section.hidden = false;
+  container.replaceChildren();
+  setText("#attention-message", "Loading recent open PRs…");
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/attention?${new URLSearchParams({ repository: target.repository })}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Attention signals unavailable.");
+    setText("#attention-message", data.items.length ? data.scope : "No open PRs in this repository.");
+    data.items.forEach((item) => {
+      const row = makeElement("article", "insight-row");
+      const link = makeElement("a", "", `#${item.number} · ${item.title}`);
+      link.href = item.html_url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      row.append(link, makeElement("small", "", item.signals.join(" · ") || "No attention signal observed"));
+      container.append(row);
+    });
+  } catch (error) {
+    setText("#attention-message", error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.querySelector("#compare-button").addEventListener("click", async () => {
+  if (!lastReport) return;
+  const repository = lastReport.repository.full_name;
+  const base = document.querySelector("#compare-base").value.trim();
+  const head = document.querySelector("#compare-head").value.trim();
+  const button = document.querySelector("#compare-button");
+  setText("#compare-message", "Comparing refs…");
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/compare?${new URLSearchParams({ repository, base, head })}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Comparison unavailable.");
+    renderComparison(data.comparison);
+    setText("#compare-message", "Comparison complete.");
+  } catch (error) {
+    document.querySelector("#compare-results").replaceChildren();
+    setText("#compare-message", error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.querySelector("#followup-button").addEventListener("click", async () => {
+  if (!lastReport?.pull_request) return;
+  const repository = lastReport.repository.full_name;
+  const pull = lastReport.pull_request.number;
+  const button = document.querySelector("#followup-button");
+  setText("#followup-message", "Loading review threads…");
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/review-followup?${new URLSearchParams({ repository, pull })}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Review threads unavailable.");
+    if (lastReport?.repository.full_name === repository && lastReport?.pull_request?.number === pull) {
+      renderFollowup(data);
+    }
+  } catch (error) {
+    document.querySelector("#followup-list").replaceChildren();
+    setText("#followup-message", error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
 
 function reportUrl(target) {
   const url = new URL(window.location.href);
@@ -402,6 +671,12 @@ document.querySelector("#download-json").addEventListener("click", () => {
   link.click();
   URL.revokeObjectURL(url);
   actionMessage.textContent = "JSON downloaded.";
+});
+
+document.querySelector("#copy-handoff").addEventListener("click", async () => {
+  if (lastReport?.review_handoff) {
+    await copyText(lastReport.review_handoff.markdown, "Editable review handoff copied.");
+  }
 });
 
 document.querySelector("#preview-button").addEventListener("click", async () => {

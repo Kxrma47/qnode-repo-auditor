@@ -1,8 +1,9 @@
 import hashlib
 import hmac
 import json
+import tomllib
 from base64 import b64encode
-from importlib.metadata import version
+from pathlib import Path
 
 import requests
 
@@ -34,14 +35,15 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.8.0",
+        "version": "0.9.0",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
     }
     assert "super-secret-value" not in response.text
     assert response.json["version"] == __version__
-    assert __version__ == version("qnode-repo-auditor")
+    project = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert __version__ == project["project"]["version"]
 
 
 def test_owner_metrics_fail_closed_without_secret():
@@ -118,6 +120,12 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert b"Install the GitHub App" not in response.data
     assert b"github.com/apps/qnode-repository-auditor" not in response.data
     assert b'id="delta-lanes"' in response.data
+    assert b'id="attention-button"' in response.data
+    assert b'id="ci-section"' in response.data
+    assert b'id="handoff-section"' in response.data
+    assert b'id="followup-section"' in response.data
+    assert b'id="compare-section"' in response.data
+    assert b'data-focus="review"' in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
 
@@ -128,6 +136,76 @@ def test_rules_endpoint_describes_weighted_contract():
     assert response.status_code == 200
     assert response.json["total_weight"] == 100
     assert len(response.json["rules"]) == 12
+
+
+def test_review_followup_returns_only_open_thread_metadata_and_marks_partial_results(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token):
+            assert token == ""
+            return {"full_name": "owner/repo", "visibility": "public"}
+
+        def review_threads(self, repository, number, token):
+            assert (repository, number, token) == ("owner/repo", 3, "test-token")
+            return {
+                "complete": False,
+                "total": 600,
+                "threads": [
+                    {
+                        "path": "src/open.py",
+                        "resolved": False,
+                        "outdated": True,
+                        "url": "https://github.com/owner/repo/pull/3#discussion_r1",
+                    },
+                    {
+                        "path": "src/done.py",
+                        "resolved": True,
+                        "outdated": False,
+                        "url": "https://github.com/owner/repo/pull/3#discussion_r2",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    client = create_app({"TESTING": True, "GITHUB_PUBLIC_TOKEN": "test-token"}).test_client()
+    assert client.get("/api/review-followup?repository=owner/repo&pull=0").status_code == 400
+    result = client.get("/api/review-followup?repository=owner/repo&pull=3")
+    assert result.status_code == 200
+    assert result.json["complete"] is False
+    assert result.json["observed_unresolved"] == 1
+    assert result.json["observed_resolved"] == 1
+    assert [thread["path"] for thread in result.json["threads"]] == ["src/open.py"]
+    assert "comment" not in result.text
+    assert client.get("/api/review-followup?repository=owner/repo&pull=3").json["cached"] is True
+    missing = create_app({"TESTING": True, "GITHUB_PUBLIC_TOKEN": ""}).test_client()
+    assert missing.get("/api/review-followup?repository=owner/repo&pull=3").status_code == 503
+
+
+def test_review_followup_uses_existing_short_lived_app_installation_token(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token):
+            return {"full_name": "owner/repo", "visibility": "public"}
+
+        def installation_token(self, installation_id):
+            assert installation_id == 12
+            return "short-lived-token"
+
+        def review_threads(self, repository, number, token):
+            assert token == "short-lived-token"
+            return {"complete": True, "total": 0, "threads": []}
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    client = create_app(
+        {"TESTING": True, "GITHUB_PUBLIC_TOKEN": "", "GITHUB_INSTALLATION_ID": "12"}
+    ).test_client()
+    response = client.get("/api/review-followup?repository=owner/repo&pull=3")
+    assert response.status_code == 200
+    assert response.json["complete"] is True
 
 
 def test_policy_preview_evaluates_without_github_or_source_content():
@@ -481,6 +559,8 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
     assert response.json["audit"]["companion_suggestions"][0]["suggested_path"] == (
         "tests/test_service.py"
     )
+    assert response.json["review_handoff"]["total_lanes"] == 1
+    assert "What behavior changed" in response.json["review_handoff"]["markdown"]
     assert "Engineering readiness" in response.json["audit"]["markdown"]
 
 
@@ -627,3 +707,132 @@ def test_public_pull_request_flags_partial_file_list(monkeypatch):
     assert response.json["audit"]["files_truncated"] is True
     assert response.json["audit"]["change_contracts"][0]["status"] == "unknown"
     assert "may be incomplete" in response.json["audit"]["markdown"]
+
+
+def test_attention_queue_is_public_bounded_and_evidence_labelled(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {"visibility": "public", "full_name": repository}
+
+        def open_pull_requests(self, repository, token="", limit=5):
+            calls.append(limit)
+            return [
+                {
+                    "number": 4,
+                    "title": "Fix",
+                    "html_url": "https://github.com/o/r/pull/4",
+                    "draft": False,
+                    "head_sha": "new",
+                    "updated_at": "2026-09-27T00:00:00Z",
+                }
+            ]
+
+        def latest_submitted_review(self, repository, number, token=""):
+            return {"commit_sha": "old", "submitted_at": "2026-09-26T00:00:00Z"}
+
+        def check_runs(self, repository, sha, token=""):
+            return {
+                "complete": True,
+                "runs": [{"name": "unit", "status": "completed", "conclusion": "failure"}],
+            }
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    client = create_app({"TESTING": True}).test_client()
+    assert client.get("/api/attention?repository=bad").status_code == 400
+    response = client.get("/api/attention?repository=o/r")
+    assert response.status_code == 200
+    cached = client.get("/api/attention?repository=o/r")
+    assert calls == [5]
+    assert cached.json["cached"] is True
+    assert response.json["items"][0]["priority"] == 0
+    assert "Observed check failure" in response.json["items"][0]["signals"]
+    assert "not personal assignments" in response.json["scope"]
+
+
+def test_new_public_endpoints_never_read_private_repository(monkeypatch):
+    class PrivateClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {"visibility": "private", "full_name": repository}
+
+        def tree_snapshot(self, *args):
+            raise AssertionError("private tree read")
+
+        def open_pull_requests(self, *args, **kwargs):
+            raise AssertionError("private PR read")
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", PrivateClient)
+    client = create_app({"TESTING": True}).test_client()
+    assert client.get("/api/attention?repository=o/r").status_code == 404
+    assert client.get("/api/compare?repository=o/r&base=main&head=next").status_code == 404
+
+
+def test_compare_refs_reports_check_changes_and_refuses_truncated_trees(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {"visibility": "public", "full_name": repository}
+
+        def tree_snapshot(self, repository, ref, token=""):
+            return TreeSnapshot(
+                ["README.md"] if ref == "old" else ["README.md", "LICENSE"],
+                truncated=ref == "truncated",
+            )
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    client = create_app({"TESTING": True}).test_client()
+    assert client.get("/api/compare?repository=o/r&base=../x&head=new").status_code == 400
+    response = client.get("/api/compare?repository=o/r&base=old&head=new")
+    assert response.status_code == 200
+    assert client.get("/api/compare?repository=o/r&base=old&head=new").json["cached"] is True
+    assert response.json["comparison"]["score_delta"] > 0
+    assert response.json["comparison"]["changed_checks"][0]["after"] is True
+    assert client.get("/api/compare?repository=o/r&base=old&head=truncated").status_code == 422
+
+
+def test_public_pr_check_evidence_is_best_effort(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            return {
+                "visibility": "public",
+                "full_name": repository,
+                "html_url": "https://github.com/o/r",
+                "default_branch": "main",
+            }
+
+        def pull_request_info(self, repository, number, token=""):
+            return {
+                "number": number,
+                "head_sha": "abc",
+                "changed_files": 1,
+                "base_sha": "",
+                "title": "Fix",
+                "html_url": "https://github.com/o/r/pull/4",
+            }
+
+        def pull_request_files(self, repository, number, token=""):
+            return [ChangedFile("src/app.py")]
+
+        def tree_snapshot(self, repository, ref, token=""):
+            return TreeSnapshot(["README.md", "src/app.py"])
+
+        def check_runs(self, repository, sha, token=""):
+            raise requests.ConnectionError("secret upstream detail")
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
+    response = create_app({"TESTING": True}).test_client().get("/api/audit?repository=o/r&pull=4")
+    assert response.status_code == 200
+    assert response.json["ci_evidence"]["available"] is False
+    assert "secret upstream detail" not in response.text

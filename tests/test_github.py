@@ -161,6 +161,140 @@ def test_pull_request_info_returns_public_report_metadata(monkeypatch):
     assert pull["changed_files"] == 3
 
 
+def test_open_pull_requests_are_bounded_and_sorted_by_recent_update(monkeypatch):
+    captured = {}
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        captured.update(url=url, params=kwargs["params"])
+        return FakeResponse(
+            [
+                {
+                    "number": 7,
+                    "title": "Fix",
+                    "html_url": "https://github.com/o/r/pull/7",
+                    "draft": False,
+                    "head": {"sha": "abc"},
+                    "updated_at": "today",
+                }
+            ]
+        )
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    pulls = GitHubAppClient().open_pull_requests("o/r", limit=5)
+    assert pulls[0]["head_sha"] == "abc"
+    assert captured["params"] == {
+        "state": "open",
+        "sort": "updated",
+        "direction": "desc",
+        "per_page": 5,
+    }
+
+
+def test_check_runs_report_incomplete_listing(monkeypatch):
+    captured = {}
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        captured.update(kwargs["params"])
+        return FakeResponse(
+            {
+                "total_count": 101,
+                "check_runs": [
+                    {
+                        "name": "unit",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "html_url": "https://github.com/o/r/actions/runs/1",
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    snapshot = GitHubAppClient().check_runs("o/r", "abc")
+    assert snapshot["complete"] is False
+    assert snapshot["runs"][0]["name"] == "unit"
+    assert captured == {"filter": "latest", "per_page": 100, "page": 1}
+
+
+def test_review_threads_are_read_only_paginated_and_bounded(monkeypatch):
+    requests_seen = []
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        requests_seen.append((method, url, kwargs["json"]))
+        after = kwargs["json"]["variables"]["after"]
+        node = {
+            "path": "src/app.py",
+            "isResolved": after is not None,
+            "isOutdated": after is None,
+            "comments": {
+                "nodes": [{"url": "https://github.com/owner/repo/pull/3#discussion_r123"}]
+            },
+        }
+        return FakeResponse(
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "reviewThreads": {
+                                "totalCount": 2,
+                                "pageInfo": {
+                                    "hasNextPage": after is None,
+                                    "endCursor": "next" if after is None else None,
+                                },
+                                "nodes": [node],
+                            }
+                        }
+                    }
+                }
+            }
+        )
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    snapshot = GitHubAppClient().review_threads("owner/repo", 3, "test-token")
+    assert snapshot["complete"] is True
+    assert snapshot["total"] == 2
+    assert [thread["resolved"] for thread in snapshot["threads"]] == [False, True]
+    assert len(requests_seen) == 2
+    assert all(method == "POST" and url.endswith("/graphql") for method, url, _ in requests_seen)
+    assert "body" not in requests_seen[0][2]["query"]
+
+
+def test_review_threads_reject_missing_token_and_untrusted_links(monkeypatch):
+    client = GitHubAppClient()
+    with pytest.raises(ValueError, match="token"):
+        client.review_threads("owner/repo", 3, "")
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        return FakeResponse(
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "reviewThreads": {
+                                "totalCount": 1,
+                                "pageInfo": {"hasNextPage": False, "endCursor": None},
+                                "nodes": [
+                                    {
+                                        "path": "src/app.py",
+                                        "isResolved": False,
+                                        "isOutdated": False,
+                                        "comments": {
+                                            "nodes": [{"url": "https://attacker.example/steal"}]
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                }
+            }
+        )
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    with pytest.raises(ValueError, match="URL"):
+        client.review_threads("owner/repo", 3, "test-token")
+
+
 def test_latest_submitted_review_skips_pending_and_bot_reviews(monkeypatch):
     def fake_request(method, url, headers, timeout, **kwargs):
         return FakeResponse(

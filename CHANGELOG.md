@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-09-27
+
+- Add an editable Review Handoff that separates observed PR metadata from unanswered contributor questions and maps owner, test-path, and configured-check evidence by lane.
+- Add on-demand, read-only review follow-up with bounded unresolved/outdated GitHub thread links and explicit incomplete-listing labels.
+- Add optional one-vote-per-browser signal feedback with private category totals in the owner dashboard; no repository names or comment text are stored.
+- Add an on-demand, bounded, repository-wide open-PR attention queue with evidence-labelled review and check signals.
+- Explain observed PR check runs alongside repository-configured job labels without inferring required checks.
+- Add source, generated-path, and since-review display filters to the full Review Map.
+- Add a two-ref before/after safeguard chart and JSON API, refusing truncated trees.
+
 ## 0.8.0 - 2026-09-26
 
 - Add opt-in cross-file change contracts with exact present, missing, or unknown path evidence.

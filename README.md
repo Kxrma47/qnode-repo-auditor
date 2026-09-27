@@ -22,6 +22,26 @@ For teams with repeatable cross-file expectations, QNode can now answer a third 
 Try the [interactive change-contract preview](https://qnode-repo-auditor.onrender.com/#policy-simulator)
 or see the [worked example](docs/examples/change-contract-demo.md).
 
+The scanner also offers an on-demand, repository-wide queue of five recently updated open PRs,
+observed GitHub check states for a PR, Review Map path filters, and a two-ref before/after
+score chart. The queue is not a personal inbox. A configured CI job is not necessarily required,
+and a missing check is not proof that its tests did not run.
+
+For a PR, **Review Handoff** combines the observed file and check metadata with a lane-by-lane
+owner, test-path, and mapped-check view. It generates an editable Markdown checklist of the
+questions a contributor still needs to answer, such as why the change is needed, what behavior
+was tested, and who should review unowned paths. The checklist is never posted automatically;
+it does not invent test results, approval, or merge readiness.
+
+The on-demand **Review Follow-up** view lists unresolved GitHub review threads and links to
+them, including threads GitHub marks outdated after later edits. It reads thread status and
+file paths, not comment text. An outdated thread is not necessarily addressed; QNode never
+replies to or resolves one. This view uses a configured GitHub API token or a short-lived
+token from QNode's existing App installation; it reports unavailable if GitHub does not
+permit that installation to read a requested public PR.
+Visitors can also mark a path-level signal useful or not useful. The private owner dashboard
+shows one current vote per browser and signal category, not a public popularity score.
+
 The public scanner evaluates a public GitHub repository **or pull-request URL** and returns path evidence plus prioritized improvements. Reports have shareable URLs and can be copied as Markdown or exported as JSON. No App installation is needed. The hosted GitHub App is currently private and only provides automatic advisory Checks on the owner's installed repositories. QNode reads file paths and metadata, not application source contents, and never blocks a merge.
 
 Have a real review case QNode missed? [Tell us what signal you need](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6). Include a public example and expected result if you can; [Issues](https://github.com/Kxrma47/qnode-repo-auditor/issues) are best for reproducible bugs.
@@ -85,12 +105,26 @@ Each lane now includes a focused, path-derived review brief: questions about wor
 
 For monorepos, lanes also show candidate existing test files and any CI jobs declared in the repository's optional [`.qnode.json` policy](docs/policy.md). The policy can suppress noisy heuristic paths and mark critical paths for deeper review. QNode still flags credential-like paths even when ignored. Configured jobs are suggestions, not jobs QNode has executed or verified.
 
+Use the Review Map filters to show source paths, hide likely generated paths, or show only
+paths changed since the latest submitted human review. Filtering changes the on-screen view,
+not the audit, score, or JSON export. If the review comparison is unavailable, QNode says so.
+For a PR, QNode separately shows the check runs GitHub reports for its head commit. A mapped
+job name is highlighted, but QNode does not infer required branch checks or claim a skipped or
+unobserved job ran. GitHub's latest-check listing is limited to 100 results and marked incomplete
+when more exist.
+This view covers GitHub check runs, not legacy commit status contexts.
+
 The public scanner accepts `OWNER/REPOSITORY#NUMBER` or a complete GitHub pull-request URL, making the same metadata-and-policy review available before installing the App. You can also preview a proposed `.qnode.json` rule against sample paths without a GitHub call.
+
+The on-demand before/after chart compares safeguard scores and changed check outcomes for two
+public Git refs. It reads each ref's paths and policy metadata separately and refuses truncated
+trees. It is not a code-behavior or test-execution comparison.
 
 ### Share and export
 
 - Every completed scan updates the browser URL, so the report can be reopened or shared.
 - **Copy Markdown** produces a review-ready engineering summary.
+- **Copy editable handoff** copies observed evidence and unanswered contributor questions for a PR.
 - **Download JSON** exports the complete evidence, recommendations, and PR signals for automation.
 
 ## Privacy model
@@ -101,7 +135,7 @@ QNode deliberately analyzes **paths, GitHub metadata, and the repository's CODEO
 - It reads `.qnode.json` only if the repository opts in, to apply path rules and job labels.
 - It does not download or parse application source-file contents; all other analysis uses paths and line counts only.
 - It does not persist webhook payloads, installation tokens, repository paths, or reports.
-- The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores only a SHA-256 hash of a random browser token and aggregate daily page-view and scan-request totals, in local SQLite or a configured PostgreSQL provider. It stores no IP addresses, user agents, repository URLs, or scan results. If PostgreSQL is configured, those limited metrics leave Render for that provider; no browser-side third-party tracker is used. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.
+- The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores a SHA-256 hash of a random browser token, aggregate daily page-view and scan-request totals, and—if a visitor votes—one current useful/not-useful response per signal category and browser. It stores no IP addresses, user agents, repository URLs, comment text, or scan results. If PostgreSQL is configured, those limited metrics and votes leave Render for that provider; no browser-side third-party tracker is used. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.
 - Public scans are cached in process for five minutes to reduce GitHub API traffic; the cache disappears on restart.
 - Installation tokens are created only for the active webhook request.
 - A score below the threshold is reported as `neutral`, never as a blocking failure.
@@ -225,9 +259,9 @@ Set `OWNER_METRICS_TOKEN` to a unique, long random value in the hosting environm
 
 The installation number is **current GitHub App installations (accounts/organizations)**, fetched directly from GitHub. It is not the number of people, visits, or successful scans.
 
-For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load. The database stores token hashes and daily counts, not raw cookies or user identity. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, page views, and successful public repository/PR scans (including cached requests). Scan counts are requests, not people, and do not store repository names. Do Not Track requests are excluded. It cannot recover activity before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
+For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load. The database stores token hashes and daily counts, not raw cookies or user identity. Optional signal feedback stores that hash with a signal category, current useful/not-useful vote, and update time; a changed vote replaces the old one. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, page views, successful public repository/PR scans (including cached requests), and category-level feedback. Scan counts are requests, not people, and do not store repository names. Do Not Track requests are excluded. It cannot recover activity before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
 
-**Free production storage:** Render Free erases local SQLite on sleep, restart, and deploy. Create a dedicated free PostgreSQL database (for example, a [Neon Free project](https://neon.com/pricing)) and put its connection string in Render's secret `VISITOR_METRICS_URL`. Keep `VISITOR_METRICS_DB` unset. QNode forces server-certificate verification and sends only random-browser-token SHA-256 hashes, timestamps, and aggregate daily counts to the database. It does **not** send IP addresses, user agents, repository names, source code, or scan results to Neon. No third-party browser script is added. The owner dashboard remains protected by `OWNER_METRICS_TOKEN`. The count starts at zero when the database is connected; previous visits cannot be reconstructed. Free database limits and availability are controlled by the provider, so check its current terms before relying on it. Do not commit or share either secret.
+**Free production storage:** Render Free erases local SQLite on sleep, restart, and deploy. Create a dedicated free PostgreSQL database (for example, a [Neon Free project](https://neon.com/pricing)) and put its connection string in Render's secret `VISITOR_METRICS_URL`. Keep `VISITOR_METRICS_DB` unset. QNode forces server-certificate verification and sends only random-browser-token SHA-256 hashes, timestamps, aggregate daily counts, and optional category-level feedback to the database. It does **not** send IP addresses, user agents, repository names, source code, comment text, or scan results to Neon. No third-party browser script is added. The owner dashboard remains protected by `OWNER_METRICS_TOKEN`. The count starts at zero when the database is connected; previous visits cannot be reconstructed. Free database limits and availability are controlled by the provider, so check its current terms before relying on it. Do not commit or share either secret.
 
 ## Limits
 
@@ -242,6 +276,8 @@ For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path
 - A declared change contract verifies matching changed paths only; it does not inspect source content, verify tests, or confirm a reviewer approved the change.
 - Public API calls are subject to GitHub rate limits.
 - Review deltas require a submitted human review and complete GitHub comparisons; otherwise they are omitted.
+- The attention queue samples only five recently updated open PRs and cannot infer who is assigned to review them.
+- Observed check runs do not reveal a repository's required-check rules; unobserved and skipped checks are not reported as passed.
 
 ## Support and security
 

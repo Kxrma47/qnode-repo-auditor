@@ -173,6 +173,11 @@ button.loading .button-loader { display: block; }
 .risk-card p { margin: 11px 0 0; color: var(--muted); font-size: .75rem; line-height: 1.55; }
 .risk-path { display: block; margin-top: 11px; overflow: hidden; color: var(--cyan); font: .66rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .risk-card .risk-fix { color: #b2c5d1; }
+.signal-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.signal-feedback small { color: var(--muted); font-size: .68rem; }
+.signal-feedback button { padding: 6px 9px; }
+.signal-feedback button[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
+.signal-feedback-status { flex-basis: 100%; color: var(--muted); font-size: .68rem; }
 .companion-section { padding: 28px 30px; border-top: 1px solid var(--line); }
 .companion-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
 .companion-card { min-width: 0; padding: 17px; border: 1px solid rgba(169, 135, 255, .34); background: var(--panel); }
@@ -217,6 +222,39 @@ button.loading .button-loader { display: block; }
 .delta-lane strong { text-align: right; font-size: .68rem; }
 .section-note { margin: 12px 0 0; color: var(--muted); font-size: .76rem; }
 .review-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.focus-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.focus-controls .active { border-color: var(--cyan); color: var(--cyan); }
+.insight-section { padding: 28px 30px; border-top: 1px solid var(--line); }
+#attention-section { margin: 22px 0; border: 1px solid var(--line-bright); background: var(--panel); }
+.insight-list { display: grid; gap: 8px; margin-top: 16px; }
+.insight-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--line); background: var(--panel); font-size: .76rem; }
+.insight-row a { color: var(--text); text-decoration-color: var(--line-bright); overflow-wrap: anywhere; }
+.insight-row small { color: var(--muted); line-height: 1.5; }
+.insight-row code { color: var(--cyan); overflow-wrap: anywhere; }
+.insight-state { color: var(--violet); font: 700 .6rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.insight-row.passed .insight-state { color: var(--green); }
+.insight-row.failed .insight-state { color: var(--danger); }
+.insight-row.pending .insight-state { color: var(--amber); }
+.handoff-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+.handoff-columns > div { min-width: 0; padding: 18px; border: 1px solid var(--line); background: var(--panel); }
+.handoff-columns h4 { margin: 0 0 12px; color: var(--cyan); font: 700 .68rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.handoff-columns ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .76rem; line-height: 1.55; }
+.handoff-columns li + li { margin-top: 8px; }
+.handoff-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.handoff-lane { min-width: 0; padding: 15px; border: 1px solid var(--line); background: var(--panel); }
+.handoff-lane.high { border-color: rgba(255, 126, 149, .5); }
+.handoff-lane.medium { border-color: rgba(255, 201, 107, .42); }
+.handoff-lane strong { color: var(--text); font-size: .8rem; }
+.handoff-lane p { margin: 8px 0 0; color: var(--muted); font-size: .7rem; line-height: 1.5; overflow-wrap: anywhere; }
+.compare-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 16px; }
+.compare-controls label { display: grid; gap: 5px; flex: 1 1 190px; color: var(--muted); font-size: .72rem; }
+.compare-controls input { width: 100%; padding: 10px; border: 1px solid var(--line-bright); background: var(--bg); color: var(--text); font: .7rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#compare-message, #attention-message { min-height: 1em; color: var(--muted); font-size: .75rem; }
+.compare-row { display: grid; grid-template-columns: minmax(80px, 180px) 1fr 95px; gap: 10px; align-items: center; margin-top: 12px; font-size: .72rem; }
+.compare-row code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-row strong { grid-column: 3; grid-row: 1; text-align: right; }
+.compare-track { grid-column: 2; grid-row: 1; height: 10px; background: var(--line); }
+.compare-bar { display: block; height: 100%; background: var(--cyan); }
 .review-lane { min-width: 0; padding: 17px; border: 1px solid var(--line); background: var(--panel); }
 .review-lane.high { border-color: rgba(255, 126, 149, .5); }
 .review-lane.medium { border-color: rgba(255, 201, 107, .42); }
@@ -275,6 +313,7 @@ footer a { color: var(--cyan); text-decoration: none; }
   .hero { gap: 42px; padding-block: 56px; }
   h1 { font-size: clamp(2.65rem, 15vw, 4.2rem); }
   .input-row { grid-template-columns: 1fr; }
+  .compare-controls label, .compare-controls button { flex: 1 1 100%; }
   button { height: 49px; }
   .repo-input span { display: none; }
   .repo-input input { padding-left: 14px; }
@@ -286,10 +325,10 @@ footer a { color: var(--cyan); text-decoration: none; }
   .pull-summary { align-items: flex-start; flex-direction: column; padding: 18px 22px; }
   .pull-summary > div:first-child { width: 100%; }
   .pull-metrics { flex-wrap: wrap; }
-  .risk-grid, .companion-grid, .review-lanes { grid-template-columns: 1fr; }
+  .risk-grid, .companion-grid, .review-lanes, .handoff-columns, .handoff-lanes { grid-template-columns: 1fr; }
   .evidence-flow { grid-template-columns: 1fr; gap: 14px; }
   .evidence-node + .evidence-node::before { content: "↓"; top: -14px; left: 12px; }
-  .risk-section, .companion-section, .contract-section, .review-map-section, .report-actions { padding: 22px; }
+  .risk-section, .companion-section, .contract-section, .review-map-section, .insight-section, .report-actions { padding: 22px; }
   #action-message { width: 100%; margin-left: 0; }
   .report-grid > div, .recommendations { padding: 22px; }
   .capabilities { padding-bottom: 80px; }

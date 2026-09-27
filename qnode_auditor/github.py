@@ -5,7 +5,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import jwt
 import requests
@@ -15,6 +15,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from .audit import ChangedFile
 
 MAX_PR_FILES = 1000
+MAX_CHECK_RUNS = 100
+MAX_REVIEW_THREADS = 200
 
 
 @dataclass(frozen=True)
@@ -223,6 +225,48 @@ class GitHubAppClient:
             "deletions": int(data.get("deletions", 0)),
         }
 
+    def open_pull_requests(self, repository: str, token: str = "", limit: int = 5) -> list[dict]:
+        """A bounded, recently updated repository-wide list; not a personal inbox."""
+        data = self._request(
+            "GET",
+            f"{self.api}/repos/{repository}/pulls",
+            token,
+            params={"state": "open", "sort": "updated", "direction": "desc", "per_page": limit},
+        )
+        return [
+            {
+                "number": int(item["number"]),
+                "title": item.get("title") or "",
+                "html_url": item["html_url"],
+                "draft": bool(item.get("draft", False)),
+                "head_sha": item["head"]["sha"],
+                "updated_at": item.get("updated_at"),
+            }
+            for item in data[:limit]
+        ]
+
+    def check_runs(self, repository: str, sha: str, token: str = "") -> dict:
+        """Read one bounded page of checks for a commit; report pagination honestly."""
+        data = self._request(
+            "GET",
+            f"{self.api}/repos/{repository}/commits/{quote(sha, safe='')}/check-runs",
+            token,
+            params={"filter": "latest", "per_page": MAX_CHECK_RUNS, "page": 1},
+        )
+        runs = data.get("check_runs", [])
+        return {
+            "complete": data.get("total_count") == len(runs) and len(runs) <= MAX_CHECK_RUNS,
+            "runs": [
+                {
+                    "name": run.get("name") or "",
+                    "status": run.get("status") or "unknown",
+                    "conclusion": run.get("conclusion"),
+                    "html_url": run.get("html_url") or "",
+                }
+                for run in runs
+            ],
+        }
+
     def latest_submitted_review(self, repository: str, number: int, token: str = "") -> dict | None:
         """Latest submitted human review with a commit SHA, up to 1,000 reviews."""
         latest = None
@@ -248,6 +292,81 @@ class GitHubAppClient:
                 return latest
         return None  # Do not claim a latest review when the listing was truncated.
 
+    def review_threads(self, repository: str, number: int, token: str) -> dict:
+        """Read bounded thread status and links, never review comment bodies."""
+        if not token:
+            raise ValueError("A GitHub token is required for review threads")
+        owner, name = repository.split("/", 1)
+        query = """
+        query ReviewThreads($owner: String!, $name: String!, $number: Int!, $after: String) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              reviewThreads(first: 100, after: $after) {
+                totalCount
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  path
+                  isResolved
+                  isOutdated
+                  comments(first: 1) { nodes { url } }
+                }
+              }
+            }
+          }
+        }
+        """
+        threads = []
+        cursor = None
+        total = 0
+        for _ in range(MAX_REVIEW_THREADS // 100):
+            data = self._request(
+                "POST",
+                f"{self.api}/graphql",
+                token,
+                json={
+                    "query": query,
+                    "variables": {"owner": owner, "name": name, "number": number, "after": cursor},
+                },
+            )
+            if data.get("errors"):
+                raise ValueError("GitHub GraphQL returned review-thread errors")
+            try:
+                pull = data["data"]["repository"]["pullRequest"]
+                if pull is None:
+                    raise LookupError("Pull request not found")
+                connection = pull["reviewThreads"]
+                page = connection["pageInfo"]
+                total = int(connection["totalCount"])
+                nodes = connection["nodes"]
+                if not isinstance(nodes, list):
+                    raise TypeError("Invalid review threads")
+                for node in nodes:
+                    url = node["comments"]["nodes"][0]["url"]
+                    parsed = urlsplit(url)
+                    if (
+                        parsed.scheme != "https"
+                        or parsed.netloc != "github.com"
+                        or parsed.path.casefold() != f"/{repository}/pull/{number}".casefold()
+                        or not parsed.fragment.startswith("discussion_r")
+                    ):
+                        raise ValueError("Invalid review thread URL")
+                    threads.append(
+                        {
+                            "path": node["path"],
+                            "resolved": node["isResolved"],
+                            "outdated": node["isOutdated"],
+                            "url": url,
+                        }
+                    )
+                if not page["hasNextPage"]:
+                    return {"threads": threads, "total": total, "complete": len(threads) == total}
+                next_cursor = page["endCursor"]
+                if not next_cursor or next_cursor == cursor:
+                    raise ValueError("Review thread pagination failed")
+                cursor = next_cursor
+            except (KeyError, IndexError, TypeError, AttributeError) as error:
+                raise ValueError("Invalid GitHub review-thread response") from error
+        return {"threads": threads, "total": total, "complete": False}
 
     def publish_check(self, repository: str, sha: str, audit, token: str) -> dict:
         output = {
