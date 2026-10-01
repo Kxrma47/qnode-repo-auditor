@@ -27,7 +27,7 @@ jobs:
       QNODE_TEST_POSTGRES_URL: postgresql://postgres:qnode_ci_only@127.0.0.1:5432/qnode_ci_only
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -38,6 +38,15 @@ jobs:
       - run: ruff check .
       - run: bandit -q -r qnode_auditor -ll
       - run: pytest --cov=qnode_auditor --cov-branch --cov-report=term-missing --cov-fail-under=85
+
+  production-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t qnode-repo-auditor:ci .
+      - run: >-
+          docker run --rm qnode-repo-auditor:ci python -c
+          'from qnode_auditor.app import app; assert app.test_client().get("/health").status_code == 200'
 
   javascript:
     runs-on: ubuntu-latest
