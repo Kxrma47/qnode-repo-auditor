@@ -37,7 +37,9 @@ limitations. Reports, installation tokens, and webhook payloads are not persiste
 
 When a server-side GitHub token is available, hosted PR scans may also compare complete Git tree
 blob IDs for up to eight recent commits and read reviewer/team requests already present in one
-bounded open-PR listing. The Action samples up to 24 locally available commits.
+bounded open-PR listing. For a repository first confirmed public, QNode may use its existing
+short-lived installation token if no general public token is configured. The Action samples up to
+24 locally available commits.
 Commit samples with partial file listings are discarded. The Action derives the same filename-only
 history locally from Git objects. History and reviewer-load inputs are never written to analytics.
 

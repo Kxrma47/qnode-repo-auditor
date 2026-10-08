@@ -158,9 +158,10 @@ QNode 2 adds seven connected, path-only review aids:
   requests when available. It does not infer team membership, availability, or automatically
   request a reviewer.
 
-The local Action computes Change Memory from checked-out Git objects. The hosted scanner fetches
-bounded commit filenames only when its server-side GitHub token is configured; otherwise it returns
-an explicit unavailable state and the remaining features still work.
+The local Action computes Change Memory from checked-out Git objects. The hosted scanner compares
+bounded Git tree metadata using a configured public token or, for an independently confirmed public
+repository where QNode is installed, a short-lived installation token. Otherwise it returns an
+explicit unavailable state and the remaining features still work.
 
 ### Review map
 
