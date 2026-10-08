@@ -1,0 +1,38 @@
+name: QNode PR Risk Brief
+description: Map pull-request review risks, ownership gaps, missing tests, and companion changes without reading source contents.
+author: Mahidul Haque
+
+branding:
+  icon: eye
+  color: purple
+
+inputs:
+  base:
+    description: Base Git commit to compare with HEAD. Leave empty for a repository-only audit.
+    required: false
+    default: ""
+  head:
+    description: Head Git commit to inspect.
+    required: false
+    default: HEAD
+
+outputs:
+  score:
+    description: Repository engineering-readiness score from 0 to 100.
+    value: ${{ steps.audit.outputs.score }}
+  grade:
+    description: Repository engineering-readiness grade.
+    value: ${{ steps.audit.outputs.grade }}
+  risk-count:
+    description: Number of path-derived pull-request signals.
+    value: ${{ steps.audit.outputs.risk_count }}
+
+runs:
+  using: composite
+  steps:
+    - id: audit
+      shell: bash
+      env:
+        QNODE_BASE: ${{ inputs.base }}
+        QNODE_HEAD: ${{ inputs.head }}
+      run: PYTHONPATH="$GITHUB_ACTION_PATH" python3 -m qnode_auditor.action

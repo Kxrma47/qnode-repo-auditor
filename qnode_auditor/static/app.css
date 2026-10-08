@@ -276,6 +276,12 @@ button.loading .button-loader { display: block; }
 .lane-paths { display: grid; gap: 4px; margin-top: 12px; }
 .lane-paths code { overflow: hidden; color: var(--cyan); font: .63rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 20px 30px; border-top: 1px solid var(--line); }
+.success-cta { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 22px 30px; border-top: 1px solid var(--line); background: linear-gradient(90deg, rgba(85, 228, 255, .06), rgba(139, 108, 255, .06)); }
+.success-cta div { display: grid; gap: 5px; }
+.success-cta strong { font-size: .9rem; }
+.success-cta span { color: var(--muted); font-size: .72rem; }
+.success-cta a { padding: 11px 13px; border: 1px solid var(--line-bright); color: var(--text); font: 700 .62rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .05em; text-decoration: none; text-transform: uppercase; }
+.success-cta .primary-action { border-color: var(--cyan); background: var(--cyan); color: #041017; }
 .ghost-button { min-width: 0; padding: 10px 12px; border-color: var(--line-bright); background: transparent; color: #a8bdca; font-size: .62rem; }
 .ghost-button:hover { border-color: var(--cyan); color: var(--text); }
 #action-message { margin-left: auto; color: var(--green); font: .65rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -328,7 +334,8 @@ footer a { color: var(--cyan); text-decoration: none; }
   .risk-grid, .companion-grid, .review-lanes, .handoff-columns, .handoff-lanes { grid-template-columns: 1fr; }
   .evidence-flow { grid-template-columns: 1fr; gap: 14px; }
   .evidence-node + .evidence-node::before { content: "↓"; top: -14px; left: 12px; }
-  .risk-section, .companion-section, .contract-section, .review-map-section, .insight-section, .report-actions { padding: 22px; }
+  .risk-section, .companion-section, .contract-section, .review-map-section, .insight-section, .report-actions, .success-cta { padding: 22px; }
+  .success-cta { grid-template-columns: 1fr; }
   #action-message { width: 100%; margin-left: 0; }
   .report-grid > div, .recommendations { padding: 22px; }
   .capabilities { padding-bottom: 80px; }

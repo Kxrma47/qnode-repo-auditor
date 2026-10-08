@@ -169,3 +169,17 @@ test("signal feedback sends only category and vote, without repository or path",
   assert.equal(yes["aria-pressed"], "true");
   assert.match(controls.children.at(-1).textContent, /saved/);
 });
+
+test("post-scan star action records only an aggregate event key", async () => {
+  const { context, get } = setup();
+  context.document.body.dataset.visitorMetrics = "true";
+  let request;
+  context.fetch = async (url, options) => {
+    request = { url, options };
+    return { ok: true };
+  };
+  get("#star-qnode").listeners.click();
+  assert.equal(request.url, "/api/event");
+  assert.deepEqual(JSON.parse(request.options.body), { event: "star" });
+  assert.equal(request.options.keepalive, true);
+});

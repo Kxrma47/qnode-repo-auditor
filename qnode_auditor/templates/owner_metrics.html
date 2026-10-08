@@ -21,6 +21,17 @@
     <p>{{ usage.recent_browsers }} browsers in the last 30 days · {{ usage.page_views }} page views since tracking began{% if usage.since %} on {{ usage.since[:10] }}{% endif %}.</p>
     <h2>Successful public scans</h2>
     <p>{{ usage.repository_scans }} repository scans · {{ usage.pull_request_scans }} pull-request scans, including cached results. These are requests, not unique users or confirmed reviews.</p>
+    <h2>Conversion actions</h2>
+    {% if usage.events %}
+    <ul>
+      {% for event, total in usage.events.items() %}
+      <li><code>{{ event }}</code>: {{ total }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No report shares, exports, star clicks, or Action clicks recorded yet.</p>
+    {% endif %}
+    <p>These are aggregate button events, not unique users. No repository name or report content is stored.</p>
     <h2>Signal feedback</h2>
     {% if feedback %}
     <ul>

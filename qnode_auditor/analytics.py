@@ -11,6 +11,10 @@ from threading import Lock
 import certifi
 import psycopg
 
+EVENT_KEYS = frozenset(
+    {"share_report", "copy_markdown", "copy_handoff", "download_json", "star", "use_action"}
+)
+
 
 def _visitor_hash(browser_token: str) -> str:
     return hashlib.sha256(browser_token.encode("ascii")).hexdigest()
@@ -59,6 +63,11 @@ class VisitorStore:
             "PRIMARY KEY(day, kind))"
         )
         connection.execute(
+            "CREATE TABLE IF NOT EXISTS daily_events ("
+            "day TEXT NOT NULL, event_key TEXT NOT NULL, events INTEGER NOT NULL, "
+            "PRIMARY KEY(day, event_key))"
+        )
+        connection.execute(
             "CREATE TABLE IF NOT EXISTS signal_feedback ("
             "visitor_hash TEXT NOT NULL, signal_key TEXT NOT NULL, useful INTEGER NOT NULL "
             "CHECK(useful IN (0, 1)), updated_at TEXT NOT NULL, "
@@ -91,6 +100,17 @@ class VisitorStore:
                 "INSERT INTO daily_views(day, page_views) VALUES (?, 1) "
                 "ON CONFLICT(day) DO UPDATE SET page_views=page_views+1",
                 (now.date().isoformat(),),
+            )
+
+    def record_event(self, event_key: str, *, now: datetime | None = None) -> None:
+        if event_key not in EVENT_KEYS:
+            raise ValueError("invalid event key")
+        now = now or datetime.now(UTC)
+        with closing(self._connection()) as connection, connection:
+            connection.execute(
+                "INSERT INTO daily_events(day, event_key, events) VALUES (?, ?, 1) "
+                "ON CONFLICT(day, event_key) DO UPDATE SET events=events+1",
+                (now.date().isoformat(), event_key),
             )
 
     def record_feedback(
@@ -129,7 +149,11 @@ class VisitorStore:
             scan_rows = connection.execute(
                 "SELECT kind, SUM(scans) FROM daily_scans GROUP BY kind"
             ).fetchall()
+            event_rows = connection.execute(
+                "SELECT event_key, SUM(events) FROM daily_events GROUP BY event_key"
+            ).fetchall()
         scans = dict(scan_rows)
+        events = {key: int(value) for key, value in event_rows}
         return {
             "unique_browsers": unique_browsers,
             "recent_browsers": recent_browsers or 0,
@@ -137,6 +161,7 @@ class VisitorStore:
             "since": first_seen,
             "repository_scans": scans.get("repository", 0),
             "pull_request_scans": scans.get("pull_request", 0),
+            "events": events,
         }
 
 
@@ -181,6 +206,12 @@ class PostgresVisitorStore:
                                 "PRIMARY KEY(day, kind))"
                             )
                             connection.execute(
+                                "CREATE TABLE IF NOT EXISTS daily_events ("
+                                "day DATE NOT NULL, event_key TEXT NOT NULL, "
+                                "events BIGINT NOT NULL, "
+                                "PRIMARY KEY(day, event_key))"
+                            )
+                            connection.execute(
                                 "CREATE TABLE IF NOT EXISTS signal_feedback ("
                                 "visitor_hash TEXT NOT NULL, signal_key TEXT NOT NULL, "
                                 "useful BOOLEAN NOT NULL, updated_at TIMESTAMPTZ NOT NULL, "
@@ -215,6 +246,17 @@ class PostgresVisitorStore:
                 "INSERT INTO daily_views(day, page_views) VALUES (%s, 1) "
                 "ON CONFLICT(day) DO UPDATE SET page_views=daily_views.page_views+1",
                 (now.date(),),
+            )
+
+    def record_event(self, event_key: str, *, now: datetime | None = None) -> None:
+        if event_key not in EVENT_KEYS:
+            raise ValueError("invalid event key")
+        now = now or datetime.now(UTC)
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO daily_events(day, event_key, events) VALUES (%s, %s, 1) "
+                "ON CONFLICT(day, event_key) DO UPDATE SET events=daily_events.events+1",
+                (now.date(), event_key),
             )
 
     def record_feedback(
@@ -256,7 +298,11 @@ class PostgresVisitorStore:
             scan_rows = connection.execute(
                 "SELECT kind, SUM(scans) FROM daily_scans GROUP BY kind"
             ).fetchall()
+            event_rows = connection.execute(
+                "SELECT event_key, SUM(events) FROM daily_events GROUP BY event_key"
+            ).fetchall()
         scans = dict(scan_rows)
+        events = {key: int(value) for key, value in event_rows}
         return {
             "unique_browsers": int(unique_browsers),
             "recent_browsers": int(recent_browsers),
@@ -264,4 +310,5 @@ class PostgresVisitorStore:
             "since": first_seen.isoformat() if first_seen else None,
             "repository_scans": int(scans.get("repository", 0)),
             "pull_request_scans": int(scans.get("pull_request", 0)),
+            "events": events,
         }

@@ -4,13 +4,51 @@
 
 # QNode Repository Auditor
 
-**Know what to fix in a repository—and what to review carefully in a pull request.**
+**Paste a PR URL. See what deserves review.**
 
-[Try the scanner](https://qnode-repo-auditor.onrender.com) · [Preview a change contract](https://qnode-repo-auditor.onrender.com/#policy-simulator) · [Suggest a feature](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6) · [Report a bug](https://github.com/Kxrma47/qnode-repo-auditor/issues)
+[Try the scanner](https://qnode-repo-auditor.onrender.com) · [Run the live example](https://qnode-repo-auditor.onrender.com/?repository=Kxrma47%2Fqnode-repo-auditor#scanner) · [Add the Action](#github-action) · [Suggest a signal](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6)
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14715/badge)](https://www.bestpractices.dev/projects/14715)
 
 </div>
+
+![QNode maps a pull request into review lanes and ownership handoffs](qnode_auditor/static/qnode-social-preview.png)
+
+QNode maps risky files, missing tests, ownership gaps, and forgotten companion changes
+without reading application source contents. Try it in the browser without signing in, or
+run the local Action inside a pull-request workflow.
+
+## GitHub Action
+
+The Action analyzes the already checked-out Git tree locally and writes an advisory risk brief
+to the workflow summary. It reads tracked paths plus optional `CODEOWNERS` and `.qnode.json`
+files; it does not upload source contents, require a token, post comments, or block a merge.
+
+```yaml
+name: QNode review brief
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  qnode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: Kxrma47/qnode-repo-auditor@v1
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+```
+
+Outputs are `score`, `grade`, and `risk-count`. QNode stays advisory even when it reports a
+low score or a risk signal. See the [45-second walkthrough](docs/demo.md) and
+[pilot guide](docs/pilot.md).
 
 Paste a public `owner/repo` name or GitHub pull-request URL into the [scanner](https://qnode-repo-auditor.onrender.com). No installation or sign-in is needed to try it. QNode answers two practical questions:
 
@@ -135,7 +173,7 @@ QNode deliberately analyzes **paths, GitHub metadata, and the repository's CODEO
 - It reads `.qnode.json` only if the repository opts in, to apply path rules and job labels.
 - It does not download or parse application source-file contents; all other analysis uses paths and line counts only.
 - It does not persist webhook payloads, installation tokens, repository paths, or reports.
-- The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores a SHA-256 hash of a random browser token, aggregate daily page-view and scan-request totals, and—if a visitor votes—one current useful/not-useful response per signal category and browser. It stores no IP addresses, user agents, repository URLs, comment text, or scan results. If PostgreSQL is configured, those limited metrics and votes leave Render for that provider; no browser-side third-party tracker is used. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.
+- The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores a SHA-256 hash of a random browser token, aggregate daily page-view and scan-request totals, allowlisted aggregate report/share/Action button counts, and—if a visitor votes—one current useful/not-useful response per signal category and browser. Button counts are not associated with browser hashes. It stores no IP addresses, user agents, repository URLs, comment text, or scan results. If PostgreSQL is configured, those limited metrics and votes leave Render for that provider; no browser-side third-party tracker is used. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.
 - Public scans are cached in process for five minutes to reduce GitHub API traffic; the cache disappears on restart.
 - Installation tokens are created only for the active webhook request.
 - A score below the threshold is reported as `neutral`, never as a blocking failure.
@@ -259,7 +297,7 @@ Set `OWNER_METRICS_TOKEN` to a unique, long random value in the hosting environm
 
 The installation number is **current GitHub App installations (accounts/organizations)**, fetched directly from GitHub. It is not the number of people, visits, or successful scans.
 
-For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load. The database stores token hashes and daily counts, not raw cookies or user identity. Optional signal feedback stores that hash with a signal category, current useful/not-useful vote, and update time; a changed vote replaces the old one. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, page views, successful public repository/PR scans (including cached requests), and category-level feedback. Scan counts are requests, not people, and do not store repository names. Do Not Track requests are excluded. It cannot recover activity before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
+For a local deployment, set `VISITOR_METRICS_DB` to an absolute SQLite file path in a writable directory (for example `/tmp/qnode-visitors.sqlite3` for **development only**). Once enabled, the scanner sets a one-year, same-site, HTTP-only random browser cookie. Its own JavaScript posts one visit after a page load. The database stores token hashes and daily counts, not raw cookies or user identity. Optional signal feedback stores that hash with a signal category, current useful/not-useful vote, and update time; a changed vote replaces the old one. Allowlisted report sharing, export, star-link, and Action-link events are stored only as aggregate daily totals without browser hashes. The owner page shows approximate unique browsers since tracking began, browsers seen in the last 30 days, page views, successful public repository/PR scans (including cached requests), conversion-button totals, and category-level feedback. Scan and button counts are requests, not people or confirmed conversions, and do not store repository names. Do Not Track requests are excluded. It cannot recover activity before activation. Erase the database to delete the history; browser IDs are retained until then and a returning browser with an expired or cleared cookie can be counted again.
 
 **Free production storage:** Render Free erases local SQLite on sleep, restart, and deploy. Create a dedicated free PostgreSQL database (for example, a [Neon Free project](https://neon.com/pricing)) and put its connection string in Render's secret `VISITOR_METRICS_URL`. Keep `VISITOR_METRICS_DB` unset. QNode forces server-certificate verification and sends only random-browser-token SHA-256 hashes, timestamps, aggregate daily counts, and optional category-level feedback to the database. It does **not** send IP addresses, user agents, repository names, source code, comment text, or scan results to Neon. No third-party browser script is added. The owner dashboard remains protected by `OWNER_METRICS_TOKEN`. The count starts at zero when the database is connected; previous visits cannot be reconstructed. Free database limits and availability are controlled by the provider, so check its current terms before relying on it. Do not commit or share either secret.
 

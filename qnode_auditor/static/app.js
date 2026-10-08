@@ -7,6 +7,17 @@ const actionMessage = document.querySelector("#action-message");
 let lastReport = null;
 let reviewFocus = "all";
 
+function recordEvent(event) {
+  if (document.body.dataset.visitorMetrics !== "true" || navigator.doNotTrack === "1") return;
+  fetch("/api/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-QNode-Event": "1" },
+    credentials: "same-origin",
+    keepalive: true,
+    body: JSON.stringify({ event }),
+  }).catch(() => {});
+}
+
 const setText = (selector, value) => {
   document.querySelector(selector).textContent = value;
 };
@@ -654,11 +665,17 @@ async function runAudit(event) {
 }
 
 document.querySelector("#share-report").addEventListener("click", async () => {
-  if (lastReport) await copyText(window.location.href, "Report link copied.");
+  if (lastReport) {
+    await copyText(window.location.href, "Report link copied.");
+    recordEvent("share_report");
+  }
 });
 
 document.querySelector("#copy-markdown").addEventListener("click", async () => {
-  if (lastReport) await copyText(lastReport.audit.markdown, "Markdown copied.");
+  if (lastReport) {
+    await copyText(lastReport.audit.markdown, "Markdown copied.");
+    recordEvent("copy_markdown");
+  }
 });
 
 document.querySelector("#download-json").addEventListener("click", () => {
@@ -671,13 +688,18 @@ document.querySelector("#download-json").addEventListener("click", () => {
   link.click();
   URL.revokeObjectURL(url);
   actionMessage.textContent = "JSON downloaded.";
+  recordEvent("download_json");
 });
 
 document.querySelector("#copy-handoff").addEventListener("click", async () => {
   if (lastReport?.review_handoff) {
     await copyText(lastReport.review_handoff.markdown, "Editable review handoff copied.");
+    recordEvent("copy_handoff");
   }
 });
+
+document.querySelector("#star-qnode").addEventListener("click", () => recordEvent("star"));
+document.querySelector("#use-qnode-action").addEventListener("click", () => recordEvent("use_action"));
 
 document.querySelector("#preview-button").addEventListener("click", async () => {
   const message = document.querySelector("#preview-message");

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-10-08
+
+- Add a Marketplace-ready local GitHub Action that writes advisory repository and pull-request
+  review evidence to the workflow summary without uploading source contents or requiring a token.
+- Replace the broad product introduction with a ten-second pull-request value proposition, a
+  live example, a concise walkthrough, pilot instructions, and a post-scan Action/star prompt.
+- Add aggregate, allowlisted conversion-event counts to the private owner dashboard without
+  recording repository names, report contents, IP addresses, or user agents.
+- Add a 1280×640 social preview, signal-request issue template, launch copy, and v1 pilot guide.
+- Add Action smoke testing and regression coverage for local Git analysis and private metrics.
+
 ## 0.9.0 - 2026-09-27
 
 - Add an editable Review Handoff that separates observed PR metadata from unanswered contributor questions and maps owner, test-path, and configured-check evidence by lane.

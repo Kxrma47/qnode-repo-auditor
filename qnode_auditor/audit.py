@@ -618,6 +618,7 @@ def _companion_suggestions(
         if file.status != "removed"
         and PurePosixPath(file.filename).suffix.lower() in SOURCE_SUFFIXES
         and not _is_test_path(file.filename)
+        and PurePosixPath(file.filename).name != "__init__.py"
     ]
     suggestions: list[CompanionSuggestion] = []
     for file in source_files:
@@ -749,6 +750,7 @@ def _review_map(
             if file.status != "removed"
             and PurePosixPath(file.filename).suffix.lower() in SOURCE_SUFFIXES
             and not _is_test_path(file.filename)
+            and PurePosixPath(file.filename).name != "__init__.py"
             and not policy.ignored(file.filename)
         ]
         matched = sum(
