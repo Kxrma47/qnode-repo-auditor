@@ -35,7 +35,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "2.0.0",
+            "version": "2.0.1",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -570,9 +570,31 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
             assert path == ".github/CODEOWNERS"
             return "/src/ @org/backend\n"
 
+        def installation_token(self, installation_id):
+            assert installation_id == 7
+            return "short-lived-token"
+
+        def recent_commit_paths(self, repository, ref, token):
+            assert token == "short-lived-token"
+            return [
+                {"paths": ["src/service.py", "tests/test_service.py"]},
+                {"paths": ["src/service.py", "tests/test_service.py"]},
+            ]
+
+        def open_pull_requests(self, repository, token, limit):
+            assert (token, limit) == ("short-lived-token", 30)
+            return [
+                {
+                    "requested_reviewers": [],
+                    "requested_teams": ["@org/backend"],
+                }
+            ]
+
     monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
     response = (
-        create_app({"TESTING": True}).test_client().get("/api/audit?repository=owner/repo&pull=42")
+        create_app({"TESTING": True, "GITHUB_INSTALLATION_ID": "7"})
+        .test_client()
+        .get("/api/audit?repository=owner/repo&pull=42")
     )
 
     assert response.status_code == 200
@@ -586,6 +608,8 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
         "tests/test_service.py"
     )
     assert response.json["review_handoff"]["total_lanes"] == 1
+    assert response.json["intelligence"]["change_memory"]["available"] is True
+    assert response.json["intelligence"]["reviewer_router"]["load_available"] is True
     assert "What behavior changed" in response.json["review_handoff"]["markdown"]
     assert "Engineering readiness" in response.json["audit"]["markdown"]
 

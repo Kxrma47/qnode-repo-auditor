@@ -710,14 +710,22 @@ def create_app(config: dict | None = None) -> Flask:
             response["review_handoff"] = review_handoff(pull, audit_data, response["ci_evidence"])
             history = []
             reviewer_load = {}
-            if token:
+            intelligence_token = token
+            if not intelligence_token and app.config["GITHUB_INSTALLATION_ID"]:
                 try:
-                    history = client.recent_commit_paths(repository, ref, token)
+                    intelligence_token = client.installation_token(
+                        int(app.config["GITHUB_INSTALLATION_ID"])
+                    )
+                except (requests.RequestException, ValueError, KeyError, TypeError):
+                    LOGGER.warning("Public scan installation token unavailable")
+            if intelligence_token:
+                try:
+                    history = client.recent_commit_paths(repository, ref, intelligence_token)
                 except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
                     LOGGER.warning("Public filename history unavailable")
                 try:
                     reviewer_load = reviewer_load_snapshot(
-                        client.open_pull_requests(repository, token, limit=30)
+                        client.open_pull_requests(repository, intelligence_token, limit=30)
                     )
                 except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
                     LOGGER.warning("Public reviewer load snapshot unavailable")
