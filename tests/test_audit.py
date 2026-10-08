@@ -180,6 +180,40 @@ def test_package_initializer_does_not_produce_synthetic_test_filename():
     assert audit.review_lanes[0].source_files == 0
 
 
+@pytest.mark.parametrize("prefix", ["", "packages/api/"])
+def test_kotlin_companion_paths_keep_the_package_and_module(prefix):
+    source = f"{prefix}src/main/kotlin/example/Service.kt"
+    companion = f"{prefix}src/test/kotlin/example/ServiceTest.kt"
+    audit = audit_tree(COMPLETE_TREE + [companion], [ChangedFile(source, additions=2)])
+    suggestion = audit.companion_suggestions[0]
+    assert suggestion.source_path == source
+    assert suggestion.suggested_path == companion
+    assert suggestion.action == "update"
+
+
+def test_unrelated_kotlin_companion_does_not_suppress_a_suggestion():
+    source = "packages/api/src/main/kotlin/example/Service.kt"
+    companion = "packages/api/src/test/kotlin/example/ServiceTest.kt"
+    unrelated = "packages/other/src/test/kotlin/example/ServiceTest.kt"
+    audit = audit_tree(
+        COMPLETE_TREE + [unrelated],
+        [ChangedFile(source, additions=2), ChangedFile(unrelated, additions=2)],
+    )
+    assert audit.companion_suggestions[0].suggested_path == companion
+    assert audit.companion_suggestions[0].action == "add"
+
+
+def test_changed_matching_kotlin_companion_suppresses_the_suggestion():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [
+            ChangedFile("src/main/kotlin/example/Service.kt", additions=2),
+            ChangedFile("src/test/kotlin/example/ServiceTest.kt", additions=2),
+        ],
+    )
+    assert audit.companion_suggestions == ()
+
+
 def test_lockfile_suggestion_uses_matching_workspace_not_unrelated_package():
     audit = audit_tree(
         COMPLETE_TREE + ["packages/other/package-lock.json"],
