@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.0.1 - 2026-10-08
+
+- Reuse QNode's short-lived installation token for bounded Change Memory and reviewer-load
+  evidence after the public scanner independently confirms that the requested repository is public.
+
 ## 2.0.0 - 2026-10-08
 
 - Add bounded filename-only Change Memory with minimum support/confidence and explicit correlation
