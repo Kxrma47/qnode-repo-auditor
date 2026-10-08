@@ -136,6 +136,17 @@ def test_reviewer_load_counts_only_visible_requests():
     ) == {"@alice": 2, "@org/core": 1, "@bob": 1}
 
 
+def test_successful_empty_reviewer_snapshot_reports_zero_not_unavailable():
+    audit, files = fixture()
+    router = build_review_intelligence(audit, files, reviewer_load={})["reviewer_router"]
+    assert router["load_available"] is True
+    assert all(
+        candidate["observed_open_requests"] == 0
+        for route in router["routes"]
+        for candidate in route["candidates"]
+    )
+
+
 def test_missing_history_and_review_evidence_remain_unknown():
     audit, files = fixture()
     data = build_review_intelligence(
