@@ -60,6 +60,9 @@ is disabled, Flask returns a standard 404 page instead.
 
 ## Other endpoints
 
+- `GET /api/demo`: stable synthetic pull-request report for first-time evaluation. It makes no
+  GitHub request and is marked `demo: true`; its repository and pull-request links point to the
+  walkthrough rather than claiming the evidence came from a live project.
 - `GET /api/attention?repository=OWNER/REPO`: five recently updated open PRs in a public
   repository, ordered by observed check failures and changes since the latest submitted
   human review. This is repository-wide, not a personal inbox or merge decision. Review

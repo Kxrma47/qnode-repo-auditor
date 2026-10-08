@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.1 - 2026-10-08
+
+- Add a clearly labelled synthetic PR report that works without GitHub API quota, so first-time
+  visitors always have a useful demonstration while live scans remain honest about rate limits.
+
 ## 1.0.0 - 2026-10-08
 
 - Add a Marketplace-ready local GitHub Action that writes advisory repository and pull-request

@@ -183,3 +183,23 @@ test("post-scan star action records only an aggregate event key", async () => {
   assert.deepEqual(JSON.parse(request.options.body), { event: "star" });
   assert.equal(request.options.keepalive, true);
 });
+
+test("instant demo is labelled and does not require a repository input", async () => {
+  const { context, get } = setup();
+  context.fetch = async () => ({ ok: true, json: async () => ({
+    demo: true, cached: false, ref: "demo-head", scanned_paths: 2,
+    repository: { full_name: "QNode demonstration", html_url: "https://example.invalid",
+      description: "Synthetic report", language: "TypeScript", updated_at: "2026-10-08" },
+    pull_request: { number: 42, title: "Demo", html_url: "https://example.invalid", state: "open",
+      draft: false, changed_files: 1, additions: 2, deletions: 1 },
+    audit: { score: 80, grade: "B", passed: 8, total: 12, checks: [], recommendations: [],
+      risks: [], review_delta: null, change_contracts: [], companion_suggestions: [],
+      review_map: [], tree_truncated: false, files_truncated: false, policy_warning: "",
+      ignored_files: 0, markdown: "demo" },
+    ci_evidence: null, review_handoff: null,
+  }) });
+  await vm.runInContext("runDemo()", context);
+  assert.equal(get("#cache-state").textContent, "DEMO");
+  assert.equal(get("#repository").value, "Static QNode demonstration");
+  assert.match(get("#form-message").textContent, /Demonstration data only/);
+});

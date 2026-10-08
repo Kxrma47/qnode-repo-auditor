@@ -352,7 +352,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="1.0.0",
+            version="1.0.1",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
             owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),
@@ -405,6 +405,90 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/api/rules")
     def rules():
         return jsonify(rules=audit_rules(), total_weight=100)
+
+    @app.get("/api/demo")
+    def demo_report():
+        """Return a stable, synthetic report so first-time evaluation never needs GitHub."""
+        paths = [
+            ".github/CODEOWNERS",
+            ".github/workflows/release.yml",
+            "CHANGELOG.md",
+            "CONTRIBUTING.md",
+            "LICENSE",
+            "README.md",
+            "SECURITY.md",
+            "database/migrations/002_add_sessions.sql",
+            "package-lock.json",
+            "package.json",
+            "src/api/client.ts",
+            "src/auth/session.ts",
+            "tests/auth/session.test.ts",
+        ]
+        changed = [
+            ChangedFile("src/auth/session.ts", additions=48, deletions=7),
+            ChangedFile("src/api/client.ts", additions=12, deletions=2),
+            ChangedFile("database/migrations/002_add_sessions.sql", additions=31),
+            ChangedFile(".github/workflows/release.yml", additions=6, deletions=1),
+        ]
+        audit = audit_tree(
+            paths,
+            changed,
+            codeowners_content=(
+                "/src/auth/ @example/security\n"
+                "/src/api/ @example/platform\n"
+                "/database/ @example/data\n"
+                "/.github/ @example/release\n"
+            ),
+        )
+        audit_data = audit.to_dict()
+        pull = {
+            "number": 42,
+            "title": "Add authenticated sessions",
+            "html_url": "https://github.com/Kxrma47/qnode-repo-auditor/blob/main/docs/demo.md",
+            "state": "open",
+            "draft": False,
+            "head_sha": "demo-head",
+            "base_sha": "demo-base",
+            "head_ref": "feature/sessions",
+            "base_ref": "main",
+            "changed_files": len(changed),
+            "additions": sum(file.additions for file in changed),
+            "deletions": sum(file.deletions for file in changed),
+        }
+        checks = {
+            "available": True,
+            "complete": True,
+            "observed": [
+                {
+                    "name": "unit tests",
+                    "state": "success",
+                    "html_url": "",
+                    "configured": False,
+                }
+            ],
+            "not_observed": [],
+        }
+        return jsonify(
+            repository={
+                "full_name": "QNode demonstration",
+                "html_url": "https://github.com/Kxrma47/qnode-repo-auditor/blob/main/docs/demo.md",
+                "description": (
+                    "Synthetic path-only pull-request evidence; no GitHub request was made."
+                ),
+                "default_branch": "main",
+                "visibility": "public",
+                "language": "TypeScript",
+                "updated_at": "2026-10-08T00:00:00Z",
+            },
+            ref="demo-head",
+            scanned_paths=len(paths),
+            cached=False,
+            demo=True,
+            audit=audit_data,
+            pull_request=pull,
+            ci_evidence=checks,
+            review_handoff=review_handoff(pull, audit_data, checks),
+        )
 
     @app.post("/api/policy-preview")
     def policy_preview():

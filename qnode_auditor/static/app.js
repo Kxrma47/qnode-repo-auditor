@@ -488,7 +488,7 @@ function renderReport(data) {
   setText("#report-paths", `${data.scanned_paths.toLocaleString()} paths`);
   setText("#report-updated", formatDate(repository.updated_at));
   setText("#passed-count", `${audit.passed}/${audit.total}`);
-  setText("#cache-state", data.cached ? "CACHED" : "LIVE");
+  setText("#cache-state", data.demo ? "DEMO" : data.cached ? "CACHED" : "LIVE");
 
   const link = document.querySelector("#report-link");
   link.textContent = repository.full_name;
@@ -664,6 +664,20 @@ async function runAudit(event) {
   }
 }
 
+async function runDemo() {
+  formMessage.textContent = "Loading the static demonstration…";
+  try {
+    const response = await fetch("/api/demo", { headers: { Accept: "application/json" } });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "The demonstration could not be loaded.");
+    repositoryInput.value = "Static QNode demonstration";
+    renderReport(data);
+    formMessage.textContent = "Demonstration data only. Paste a public repository or PR to run a live scan.";
+  } catch (error) {
+    formMessage.textContent = error.message;
+  }
+}
+
 document.querySelector("#share-report").addEventListener("click", async () => {
   if (lastReport) {
     await copyText(window.location.href, "Report link copied.");
@@ -735,9 +749,12 @@ document.querySelector("#preview-button").addEventListener("click", async () => 
 if (document.body.dataset.publicAudit === "true") {
   form.addEventListener("submit", runAudit);
   const params = new URLSearchParams(window.location.search);
+  const demo = params.get("demo");
   const repository = params.get("repository");
   const pull = params.get("pull");
-  if (repository) {
+  if (demo === "1") {
+    runDemo();
+  } else if (repository) {
     repositoryInput.value = pull ? `${repository}#${pull}` : repository;
     runAudit();
   }
