@@ -122,6 +122,27 @@ def create_app(config: dict | None = None) -> Flask:
             abort(503, description="GitHub App installation is not configured")
         return client.installation_token(int(installation_id))
 
+    def public_repository_access(
+        client: GitHubAppClient, repository: str
+    ) -> tuple[str, dict]:
+        """Retry a rate-limited public credential with the configured App installation.
+
+        The caller must still enforce public visibility before reading repository data.
+        """
+        token = app.config["GITHUB_PUBLIC_TOKEN"]
+        try:
+            return token, client.repository_info(repository, token)
+        except requests.HTTPError as error:
+            status = error.response.status_code if error.response is not None else 502
+            installation_id = app.config["GITHUB_INSTALLATION_ID"]
+            if status not in {403, 429} or not installation_id:
+                raise
+            try:
+                fallback = client.installation_token(int(installation_id))
+                return fallback, client.repository_info(repository, fallback)
+            except (requests.RequestException, ValueError, KeyError, TypeError):
+                raise error from None
+
     def repository_policy(
         client: GitHubAppClient, repository: str, ref: str, token: str, paths: list[str]
     ) -> AuditPolicy:
@@ -634,8 +655,7 @@ def create_app(config: dict | None = None) -> Flask:
 
         try:
             client = github_client()
-            token = app.config["GITHUB_PUBLIC_TOKEN"]
-            info = client.repository_info(repository, token)
+            token, info = public_repository_access(client, repository)
             if info["visibility"] != "public":
                 return jsonify(error="Repository or ref not found, or it is not public."), 404
             pull = None

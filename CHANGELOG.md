@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.0.3 - 2026-10-08
+
+- Retry a rate-limited public scanner credential with the configured GitHub App installation
+  token while retaining the public-visibility gate.
+
 ## 2.0.2 - 2026-10-08
 
 - Distinguish a successful reviewer-load snapshot with zero open requests from an unavailable
