@@ -6,7 +6,7 @@
 
 **Paste a PR URL. See what deserves review.**
 
-[Try the scanner](https://qnode-repo-auditor.onrender.com) · [Run the live example](https://qnode-repo-auditor.onrender.com/?repository=Kxrma47%2Fqnode-repo-auditor#scanner) · [Add the Action](#github-action) · [Suggest a signal](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6)
+[Try the scanner](https://qnode-repo-auditor.onrender.com) · [Run the instant demo](https://qnode-repo-auditor.onrender.com/?demo=1#scanner) · [Add the Action](#github-action) · [Suggest a signal](https://github.com/Kxrma47/qnode-repo-auditor/discussions/6)
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14715/badge)](https://www.bestpractices.dev/projects/14715)
 

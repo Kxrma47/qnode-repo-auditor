@@ -35,7 +35,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -137,6 +137,21 @@ def test_rules_endpoint_describes_weighted_contract():
     assert response.status_code == 200
     assert response.json["total_weight"] == 100
     assert len(response.json["rules"]) == 12
+
+
+def test_static_demo_never_calls_github_and_is_clearly_labelled(monkeypatch):
+    class ForbiddenClient:
+        def __init__(self, **kwargs):
+            raise AssertionError("Static demo must not construct a GitHub client")
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", ForbiddenClient)
+    response = create_app({"TESTING": True}).test_client().get("/api/demo")
+    assert response.status_code == 200
+    assert response.json["demo"] is True
+    assert response.json["repository"]["full_name"] == "QNode demonstration"
+    assert response.json["pull_request"]["number"] == 42
+    assert response.json["audit"]["risks"]
+    assert "Synthetic" in response.json["repository"]["description"]
 
 
 def test_review_followup_returns_only_open_thread_metadata_and_marks_partial_results(monkeypatch):
