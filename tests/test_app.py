@@ -35,7 +35,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-            "version": "2.0.2",
+            "version": "2.0.3",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -522,6 +522,59 @@ def test_public_scanner_does_not_expose_private_repo_even_with_accessible_token(
         assert response.status_code == 404
         assert "private" not in response.text.lower()
     assert calls == [("owner/repo", "private-readable-token")] * 2
+
+
+def test_public_scanner_retries_rate_limited_token_with_app_installation(monkeypatch):
+    calls = []
+
+    class RateLimitedClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def repository_info(self, repository, token=""):
+            calls.append(("info", token))
+            if token == "rate-limited-token":
+                response = requests.Response()
+                response.status_code = 429
+                raise requests.HTTPError(response=response)
+            return {
+                "full_name": repository,
+                "html_url": f"https://github.com/{repository}",
+                "description": "Public repository",
+                "default_branch": "main",
+                "visibility": "public",
+                "language": "Python",
+                "stars": 0,
+                "forks": 0,
+                "open_issues": 0,
+                "archived": False,
+                "updated_at": None,
+            }
+
+        def installation_token(self, installation_id):
+            calls.append(("installation", installation_id))
+            return "installation-token"
+
+        def tree_snapshot(self, repository, ref, token=""):
+            calls.append(("tree", token))
+            return TreeSnapshot(["README.md", "LICENSE"])
+
+    monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", RateLimitedClient)
+    response = create_app(
+        {
+            "TESTING": True,
+            "GITHUB_PUBLIC_TOKEN": "rate-limited-token",
+            "GITHUB_INSTALLATION_ID": "7",
+        }
+    ).test_client().get("/api/audit?repository=owner/repo")
+
+    assert response.status_code == 200
+    assert calls == [
+        ("info", "rate-limited-token"),
+        ("installation", 7),
+        ("info", "installation-token"),
+        ("tree", "installation-token"),
+    ]
 
 
 def test_public_pull_request_audit_includes_change_risks(monkeypatch):
