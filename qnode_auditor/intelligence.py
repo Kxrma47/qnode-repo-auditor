@@ -437,12 +437,13 @@ def split_plan(audit: Audit, memory: dict) -> dict:
 
 
 def reviewer_router(audit: Audit, observed_load: dict[str, int] | None = None) -> dict:
-    observed_load = observed_load or {}
+    load_available = observed_load is not None
+    load = observed_load or {}
     routes = []
     for lane in audit.review_lanes:
         candidates = sorted(
             lane.owners,
-            key=lambda owner: (observed_load.get(owner, 10**6), owner.casefold()),
+            key=lambda owner: (load.get(owner, 0) if load_available else 10**6, owner.casefold()),
         )
         routes.append(
             {
@@ -451,7 +452,7 @@ def reviewer_router(audit: Audit, observed_load: dict[str, int] | None = None) -
                 "candidates": [
                     {
                         "owner": owner,
-                        "observed_open_requests": observed_load.get(owner),
+                        "observed_open_requests": load.get(owner, 0) if load_available else None,
                         "kind": "team" if owner.count("/") else "user-or-email",
                     }
                     for owner in candidates
@@ -462,7 +463,7 @@ def reviewer_router(audit: Audit, observed_load: dict[str, int] | None = None) -
         )
     return {
         "routes": routes,
-        "load_available": bool(observed_load),
+        "load_available": load_available,
         "note": (
             "Declared CODEOWNERS are ordered by bounded observed open review requests; team "
             "membership and availability are not inferred."

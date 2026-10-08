@@ -220,7 +220,7 @@ def create_app(config: dict | None = None) -> Flask:
             except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
                 LOGGER.warning("Installed PR check listing unavailable")
         history = []
-        reviewer_load = {}
+        reviewer_load = None
         try:
             history = client.recent_commit_paths(repository, sha, token)
         except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
@@ -709,7 +709,7 @@ def create_app(config: dict | None = None) -> Flask:
             response["ci_evidence"] = ci_evidence(checks, audit_data["review_map"])
             response["review_handoff"] = review_handoff(pull, audit_data, response["ci_evidence"])
             history = []
-            reviewer_load = {}
+            reviewer_load = None
             intelligence_token = token
             if not intelligence_token and app.config["GITHUB_INSTALLATION_ID"]:
                 try:

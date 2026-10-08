@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.0.2 - 2026-10-08
+
+- Distinguish a successful reviewer-load snapshot with zero open requests from an unavailable
+  snapshot, and display zero for declared owners when that bounded evidence is available.
+
 ## 2.0.1 - 2026-10-08
 
 - Reuse QNode's short-lived installation token for bounded Change Memory and reviewer-load
