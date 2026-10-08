@@ -203,3 +203,34 @@ test("instant demo is labelled and does not require a repository input", async (
   assert.equal(get("#repository").value, "Static QNode demonstration");
   assert.match(get("#form-message").textContent, /Demonstration data only/);
 });
+
+test("review intelligence renders graph, history, CI, split, and reviewer evidence", () => {
+  const { context, get, text } = setup();
+  context.fixture = { pull_request: { number: 4 } };
+  context.intelligence = {
+    blast_radius: { score: 72, level: "high", factors: [{ label: "Operational reach" }] },
+    review_freshness: { status: "stale", reasons: [{ text: "Two paths changed after review." }] },
+    change_memory: { sampled_commits: 12, links: [{ source: "src/app.py", target: "tests/test_app.py" }],
+      suggestions: [{ source_path: "src/app.py", suggested_path: "tests/test_app.py",
+        confidence: 0.75, reason: "Changed together in 3 of 4 sampled commits." }], note: "history" },
+    impact_graph: { nodes: [
+      { id: "lane:src", kind: "lane", label: "src/" },
+      { id: "path:src/app.py", kind: "path", label: "src/app.py" },
+    ], edges: [{ source: "lane:src", target: "path:src/app.py", kind: "contains" }] },
+    ci_plan: { jobs: [{ name: "unit", lane: "src/", evidence: "configured", reason: "Mapped" }] },
+    split_plan: { recommended: true, groups: [{ title: "src/", file_count: 2,
+      attention: "high", paths: ["src/app.py"] }], couplings: [] },
+    reviewer_router: { load_available: true, routes: [{ lane: "src/", suggested: "@alice",
+      unowned_files: 0, candidates: [{ owner: "@alice", observed_open_requests: 1 }] }] },
+  };
+  vm.runInContext("lastReport = fixture; renderIntelligence(intelligence)", context);
+  assert.match(text(get("#intelligence-summary")), /72\/100 · HIGH.*STALE.*12 COMMITS.*SPLIT SUGGESTED/);
+  assert.match(text(get("#impact-graph")), /src\/.*src\/app.py.*contains/);
+  assert.match(text(get("#memory-list")), /tests\/test_app.py.*75%/);
+  assert.match(text(get("#ci-plan-list")), /unit.*CONFIGURED/);
+  assert.match(text(get("#split-list")), /src\/.*2 files/);
+  assert.match(text(get("#router-list")), /First option: @alice.*@alice \(1 open\)/);
+  const firstNode = get("#impact-graph").children[0].children[0];
+  firstNode.listeners.click();
+  assert.equal(get("#impact-graph").children[0].children[0]["aria-pressed"], "true");
+});

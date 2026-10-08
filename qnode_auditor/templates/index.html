@@ -140,6 +140,38 @@ src/client/api.ts</textarea>
           </div>
         </div>
 
+        <section id="intelligence-section" class="intelligence-section" hidden>
+          <div class="subheading"><span>REVIEW INTELLIGENCE</span><b>PATHS + HISTORY + OWNERSHIP</b></div>
+          <p class="section-note">A transparent review-prioritization layer. Every result is derived from filenames, bounded co-change history, declared policy, CODEOWNERS, and observed check metadata—not source contents.</p>
+          <div id="intelligence-summary" class="intelligence-summary"></div>
+
+          <div class="intelligence-block">
+            <div class="subheading"><span>INTERACTIVE IMPACT GRAPH</span><b id="impact-count">0 NODES</b></div>
+            <p class="section-note">Select a node to isolate its direct evidence connections. Historical edges are correlations, not code dependencies.</p>
+            <div id="impact-graph" class="impact-graph" aria-label="Pull-request impact graph"></div>
+            <button id="reset-impact" type="button" class="ghost-button">Show complete graph</button>
+          </div>
+
+          <div class="intelligence-columns">
+            <div class="intelligence-block">
+              <div class="subheading"><span>CHANGE MEMORY</span><b id="memory-count">0 LINKS</b></div>
+              <div id="memory-list" class="intelligence-list"></div>
+            </div>
+            <div class="intelligence-block">
+              <div class="subheading"><span>SMART CI PLAN</span><b id="ci-plan-count">0 JOBS</b></div>
+              <div id="ci-plan-list" class="intelligence-list"></div>
+            </div>
+            <div class="intelligence-block">
+              <div class="subheading"><span>PR SPLIT ASSISTANT</span><b id="split-status">ADVISORY</b></div>
+              <div id="split-list" class="intelligence-list"></div>
+            </div>
+            <div class="intelligence-block">
+              <div class="subheading"><span>REVIEWER ROUTER</span><b id="router-status">DECLARED OWNERS</b></div>
+              <div id="router-list" class="intelligence-list"></div>
+            </div>
+          </div>
+        </section>
+
         <div class="report-grid">
           <div>
             <div class="subheading"><span>DETECTED SIGNALS</span><b id="cache-state"></b></div>

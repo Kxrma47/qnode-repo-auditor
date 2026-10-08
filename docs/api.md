@@ -35,6 +35,20 @@ Legacy commit status contexts are not included.
 They also contain `review_handoff`: observed `facts`, unanswered `questions`, a bounded
 lane evidence matrix, `total_lanes`, and copy-ready `markdown`. Its questions are prompts
 for humans, not assertions that tests, approvals, or branch rules are satisfied.
+Pull-request scans additionally contain `intelligence` with:
+
+- `change_memory`: bounded sampled-commit count, repeated filename links, and absent companion
+  suggestions with support and confidence;
+- `impact_graph`: typed nodes and evidence-labelled edges for paths, lanes, owners, tests, jobs,
+  contracts, deployment areas, and historical co-change;
+- `ci_plan`: configured or heuristic lane-specific job suggestions;
+- `review_freshness`: `current`, `stale`, `pending`, or `unknown` plus observed reasons;
+- `blast_radius`: a transparent 0–100 review-prioritization score and its contributing factors;
+- `split_plan`: proposed coupled path groups without modifying the pull request; and
+- `reviewer_router`: declared owners ordered by a bounded open-request snapshot when available.
+
+Every object contains a limitation note. Missing history, checks, review comparisons, or reviewer
+load stays unavailable or unknown rather than becoming a positive claim.
 
 `audit` contains `score` (0–100), `grade` (A–F), `conclusion` (`success` or advisory
 `neutral`), `passed`, `total`, `checks`, `recommendations`, `risks`, `review_map`,
@@ -87,8 +101,9 @@ is disabled, Flask returns a standard 404 page instead.
   vote replaces it. Repositories, paths, and report content are not stored. Do Not Track
   requests are rejected; the private owner page shows category totals only.
 - `POST /api/event`: optional same-origin aggregate measurement for one allowlisted browser
-  action: `share_report`, `copy_markdown`, `copy_handoff`, `download_json`, `star`, or
-  `use_action`. Requires the scanner's random browser cookie, `X-QNode-Event: 1`, and the
+  action: `share_report`, `copy_markdown`, `copy_handoff`, `download_json`, `star`,
+  `use_action`, or `explore_intelligence`. Requires the scanner's random browser cookie,
+  `X-QNode-Event: 1`, and the
   configured visitor store. The database keeps daily event totals only; it does not associate
   an event with a browser hash, repository, URL, report, IP address, or user agent. Do Not Track
   requests are rejected. Counts represent button actions, not unique users or confirmed stars.

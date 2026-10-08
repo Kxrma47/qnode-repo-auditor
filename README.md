@@ -40,13 +40,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: Kxrma47/qnode-repo-auditor@v1
+      - uses: Kxrma47/qnode-repo-auditor@v2
         with:
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
 ```
 
-Outputs are `score`, `grade`, and `risk-count`. QNode stays advisory even when it reports a
+Outputs are `score`, `grade`, `risk-count`, and `blast-radius`. QNode stays advisory even when it reports a
 low score or a risk signal. See the [45-second walkthrough](docs/demo.md) and
 [pilot guide](docs/pilot.md).
 
@@ -135,6 +135,33 @@ runtime dependency. Incomplete PR file lists produce **unknown**, not false miss
 
 Signals appear in the GitHub Check summary and as file annotations. The check remains advisory and offers a **Re-run audit** action after changes are pushed.
 
+### Review intelligence graph
+
+QNode 2 adds seven connected, path-only review aids:
+
+- **Change Memory** samples a bounded filename-only Git history and reports paths that repeatedly
+  changed together. A relationship needs at least two observations and 40% confidence. It is a
+  correlation, not proof of a runtime dependency.
+- **Impact Graph** connects changed paths to review lanes, candidate tests, configured CI jobs,
+  CODEOWNERS, declared contracts, and deployment areas. Select any node to isolate its immediate
+  evidence links.
+- **Smart CI Plan** suggests the smallest lane-specific verification set and marks every item as
+  repository-configured or heuristic. QNode does not claim that suggested jobs exist or ran.
+- **Review Freshness Guard** combines the latest submitted-review commit comparison with current-head
+  check metadata. `stale`, `pending`, and `unknown` are evidence labels, not approval decisions.
+- **Blast Radius** ranks structural review reach from visible factors such as critical paths,
+  operational surfaces, access-related paths, lane count, and strong historical co-change links.
+  It is not a defect probability.
+- **PR Split Assistant** proposes review/PR groups while keeping lanes together when declared
+  contracts or strong historical co-change evidence couples them. It never modifies a branch.
+- **Reviewer Router** orders declared CODEOWNERS using a bounded snapshot of visible open review
+  requests when available. It does not infer team membership, availability, or automatically
+  request a reviewer.
+
+The local Action computes Change Memory from checked-out Git objects. The hosted scanner fetches
+bounded commit filenames only when its server-side GitHub token is configured; otherwise it returns
+an explicit unavailable state and the remaining features still work.
+
 ### Review map
 
 Every pull-request report also creates a privacy-first review map. Changed files are grouped into logical lanes such as `src/`, `.github/`, or an individual `packages/web/` monorepo package. Lanes are ordered by attention level and churn, and each one shows its file count, line changes, representative paths, relevant risk signals, matching CODEOWNERS, and any ownership gaps. GitHub's last-matching-rule behavior is preserved, including team, user, and email owners. This helps teams delegate a mixed pull request without pretending that one approval covers every area.
@@ -171,6 +198,10 @@ QNode deliberately analyzes **paths, GitHub metadata, and the repository's CODEO
 
 - It reads CODEOWNERS solely to map changed paths to reviewer handles.
 - It reads `.qnode.json` only if the repository opts in, to apply path rules and job labels.
+- For authenticated hosted PR scans, it may sample up to eight recent commits and at most 120
+  filenames per complete sampled commit, plus one bounded open-PR listing for reviewer-request
+  counts. The local Action samples up to 24 locally available commits. These
+  values are used only in the in-memory report/cache and are not persisted.
 - It does not download or parse application source-file contents; all other analysis uses paths and line counts only.
 - It does not persist webhook payloads, installation tokens, repository paths, or reports.
 - The owner-only metrics page reads GitHub's current App installation count. Optional website counting stores a SHA-256 hash of a random browser token, aggregate daily page-view and scan-request totals, allowlisted aggregate report/share/Action button counts, and—if a visitor votes—one current useful/not-useful response per signal category and browser. Button counts are not associated with browser hashes. It stores no IP addresses, user agents, repository URLs, comment text, or scan results. If PostgreSQL is configured, those limited metrics and votes leave Render for that provider; no browser-side third-party tracker is used. Do Not Track browsers are excluded. Clearing cookies or switching devices changes the approximate browser count.

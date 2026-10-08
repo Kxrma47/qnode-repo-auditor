@@ -55,5 +55,7 @@ def test_action_writes_summary_and_outputs(tmp_path, monkeypatch):
     assert main() == 0
     assert "Engineering readiness" in summary.read_text()
     assert "did not read application source contents" in summary.read_text()
+    assert "QNode review intelligence" in summary.read_text()
     assert "score=" in outputs.read_text()
     assert "risk_count=1" in outputs.read_text()
+    assert "blast_radius=" in outputs.read_text()

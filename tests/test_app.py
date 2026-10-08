@@ -35,7 +35,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "1.0.1",
+        "version": "2.0.0",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -126,6 +126,12 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert b'id="handoff-section"' in response.data
     assert b'id="followup-section"' in response.data
     assert b'id="compare-section"' in response.data
+    assert b'id="intelligence-section"' in response.data
+    assert b'id="impact-graph"' in response.data
+    assert b'id="memory-list"' in response.data
+    assert b'id="ci-plan-list"' in response.data
+    assert b'id="split-list"' in response.data
+    assert b'id="router-list"' in response.data
     assert b'data-focus="review"' in response.data
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
@@ -151,6 +157,10 @@ def test_static_demo_never_calls_github_and_is_clearly_labelled(monkeypatch):
     assert response.json["repository"]["full_name"] == "QNode demonstration"
     assert response.json["pull_request"]["number"] == 42
     assert response.json["audit"]["risks"]
+    assert response.json["intelligence"]["impact_graph"]["nodes"]
+    assert response.json["intelligence"]["change_memory"]["available"] is True
+    assert response.json["intelligence"]["review_freshness"]["status"] == "stale"
+    assert response.json["intelligence"]["reviewer_router"]["load_available"] is True
     assert "Synthetic" in response.json["repository"]["description"]
 
 
@@ -312,7 +322,7 @@ def test_pull_request_webhook_publishes_path_and_change_analysis(monkeypatch):
         def pull_request_info(self, repository, number, token):
             return {"base_sha": ""}
 
-        def publish_check(self, repository, sha, audit, token):
+        def publish_check(self, repository, sha, audit, token, **kwargs):
             calls["score"] = audit.score
             calls["risks"] = [risk.key for risk in audit.risks]
             return {}
@@ -371,7 +381,7 @@ def test_duplicate_delivery_does_not_publish_twice(monkeypatch):
         def pull_request_info(self, repository, number, token):
             return {"base_sha": ""}
 
-        def publish_check(self, repository, sha, audit, token):
+        def publish_check(self, repository, sha, audit, token, **kwargs):
             published.append(sha)
             return {}
 
@@ -416,7 +426,7 @@ def test_requested_check_action_reruns_pull_request_audit(monkeypatch):
         def pull_request_info(self, repository, number, token):
             return {"base_sha": ""}
 
-        def publish_check(self, repository, sha, audit, token):
+        def publish_check(self, repository, sha, audit, token, **kwargs):
             calls["published"] = repository
             return {}
 

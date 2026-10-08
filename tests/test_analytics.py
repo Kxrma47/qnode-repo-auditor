@@ -251,9 +251,7 @@ def test_private_website_metrics_and_beacon_validation(monkeypatch, tmp_path):
         == 403
     )
     assert (
-        first.post(
-            "/api/event", json={"event": "share_report"}, headers=event_headers
-        ).status_code
+        first.post("/api/event", json={"event": "share_report"}, headers=event_headers).status_code
         == 204
     )
     response = first.get("/owner/metrics", headers=auth)
