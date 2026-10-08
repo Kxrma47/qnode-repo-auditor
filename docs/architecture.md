@@ -11,9 +11,11 @@ deterministic audit engine powers all three.
 3. `qnode_auditor/policy.py` validates the repository's optional `.qnode.json` rules.
 4. `qnode_auditor/audit.py` scores repository safeguards and produces path based review
    signals, companion suggestions, ownership lanes, and report data.
-5. The public web page renders that data in the browser. Installed App requests also
+5. `qnode_auditor/intelligence.py` derives bounded filename co-change memory, the impact graph,
+   CI suggestions, freshness evidence, blast-radius factors, split groups, and reviewer routing.
+6. The public web page renders that data in the browser. Installed App requests also
    publish an advisory GitHub Check on the pull request head commit.
-6. `qnode_auditor/action.py` analyzes the caller's checked-out Git tree and writes an advisory
+7. `qnode_auditor/action.py` analyzes the caller's checked-out Git tree and writes an advisory
    Markdown brief to the workflow summary. It does not call the hosted scanner, transmit source
    contents, require a GitHub token, post comments, or publish a Check.
 
@@ -32,6 +34,12 @@ uses either a local SQLite file or a separate PostgreSQL provider. The latter pe
 Render Free only after the secret connection URL is configured in the hosting environment.
 The [README privacy model](../README.md#privacy-model) describes retained fields and
 limitations. Reports, installation tokens, and webhook payloads are not persisted.
+
+When a server-side GitHub token is available, hosted PR scans may also compare complete Git tree
+blob IDs for up to eight recent commits and read reviewer/team requests already present in one
+bounded open-PR listing. The Action samples up to 24 locally available commits.
+Commit samples with partial file listings are discarded. The Action derives the same filename-only
+history locally from Git objects. History and reviewer-load inputs are never written to analytics.
 
 ## Failure behavior
 

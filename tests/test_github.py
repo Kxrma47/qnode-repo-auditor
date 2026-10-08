@@ -120,6 +120,44 @@ def test_pull_request_files_are_converted_to_domain_objects(monkeypatch):
     assert files[0].changes == 16
 
 
+def test_recent_commit_paths_is_authenticated_bounded_and_skips_partial_commits(monkeypatch):
+    calls = []
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        calls.append((url, headers, kwargs.get("params")))
+        if url.endswith("/commits"):
+            return FakeResponse(
+                [
+                    {"sha": "one", "parents": [{"sha": "parent"}]},
+                    {"sha": "partial", "parents": [{"sha": "one"}]},
+                ]
+            )
+        trees = {
+            "parent": {
+                "truncated": False,
+                "tree": [{"type": "blob", "path": "src/app.py", "sha": "a" * 40}],
+            },
+            "one": {
+                "truncated": False,
+                "tree": [
+                    {"type": "blob", "path": "src/app.py", "sha": "b" * 40},
+                    {"type": "blob", "path": "tests/test_app.py", "sha": "c" * 40},
+                ],
+            },
+            "partial": {"truncated": True, "tree": []},
+        }
+        return FakeResponse(trees[url.rsplit("/", 1)[-1]])
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    client = GitHubAppClient()
+    assert client.recent_commit_paths("owner/repo", "main", "token") == [
+        {"sha": "one", "paths": ["src/app.py", "tests/test_app.py"]}
+    ]
+    assert all(call[1]["Authorization"] == "Bearer token" for call in calls)
+    assert not any("/commits/one" in call[0] for call in calls)
+    assert client.recent_commit_paths("owner/repo", "main", "") == []
+
+
 def test_file_text_decodes_codeowners_at_requested_ref(monkeypatch):
     captured = {}
 

@@ -12,7 +12,15 @@ import certifi
 import psycopg
 
 EVENT_KEYS = frozenset(
-    {"share_report", "copy_markdown", "copy_handoff", "download_json", "star", "use_action"}
+    {
+        "share_report",
+        "copy_markdown",
+        "copy_handoff",
+        "download_json",
+        "star",
+        "use_action",
+        "explore_intelligence",
+    }
 )
 
 

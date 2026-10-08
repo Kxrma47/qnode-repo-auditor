@@ -241,9 +241,54 @@ class GitHubAppClient:
                 "draft": bool(item.get("draft", False)),
                 "head_sha": item["head"]["sha"],
                 "updated_at": item.get("updated_at"),
+                "requested_reviewers": [
+                    f"@{reviewer['login']}"
+                    for reviewer in item.get("requested_reviewers", [])
+                    if reviewer.get("login")
+                ],
+                "requested_teams": [
+                    f"@{repository.split('/', 1)[0]}/{team['slug']}"
+                    for team in item.get("requested_teams", [])
+                    if team.get("slug")
+                ],
             }
             for item in data[:limit]
         ]
+
+    def recent_commit_paths(
+        self, repository: str, ref: str, token: str, limit: int = 8
+    ) -> list[dict]:
+        """Return bounded filename-only history from tree IDs, never commit patch payloads."""
+        if not token:
+            return []
+        commits = self._request(
+            "GET",
+            f"{self.api}/repos/{repository}/commits",
+            token,
+            params={"sha": ref, "per_page": min(max(limit, 1), 24), "page": 1},
+        )
+        history = []
+        trees: dict[str, TreeSnapshot] = {}
+
+        def snapshot(sha: str) -> TreeSnapshot:
+            if sha not in trees:
+                trees[sha] = self.tree_snapshot(repository, sha, token)
+            return trees[sha]
+
+        for commit in commits[:limit]:
+            sha = commit.get("sha")
+            parents = commit.get("parents") or []
+            parent = parents[0].get("sha") if parents else ""
+            if not sha or not parent:
+                continue
+            try:
+                files = compare_trees(snapshot(parent), snapshot(sha))
+            except ValueError:
+                continue
+            paths = [file.filename for file in files]
+            if 0 < len(paths) <= 120:
+                history.append({"sha": sha, "paths": paths})
+        return history
 
     def check_runs(self, repository: str, sha: str, token: str = "") -> dict:
         """Read one bounded page of checks for a commit; report pagination honestly."""
@@ -368,10 +413,15 @@ class GitHubAppClient:
                 raise ValueError("Invalid GitHub review-thread response") from error
         return {"threads": threads, "total": total, "complete": False}
 
-    def publish_check(self, repository: str, sha: str, audit, token: str) -> dict:
+    def publish_check(
+        self, repository: str, sha: str, audit, token: str, *, extra_markdown: str = ""
+    ) -> dict:
+        summary = audit.markdown()
+        if extra_markdown:
+            summary = f"{summary}\n\n{extra_markdown}"
         output = {
             "title": f"Readiness {audit.score}/100 · Grade {audit.grade}",
-            "summary": audit.markdown(),
+            "summary": summary,
         }
         annotations = audit.annotations()
         if annotations:

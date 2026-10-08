@@ -6,6 +6,8 @@ const report = document.querySelector("#report");
 const actionMessage = document.querySelector("#action-message");
 let lastReport = null;
 let reviewFocus = "all";
+let selectedImpactNode = "";
+let intelligenceExplored = false;
 
 function recordEvent(event) {
   if (document.body.dataset.visitorMetrics !== "true" || navigator.doNotTrack === "1") return;
@@ -427,6 +429,135 @@ function renderComparison(comparison) {
   comparison.changed_checks.forEach((check) => container.append(makeElement("p", "section-note", `${check.after ? "Gained" : "Lost"}: ${check.label}`)));
 }
 
+function renderImpactGraph(graph) {
+  const container = document.querySelector("#impact-graph");
+  container.replaceChildren();
+  const neighbors = new Set();
+  if (selectedImpactNode) {
+    neighbors.add(selectedImpactNode);
+    graph.edges.forEach((edge) => {
+      if (edge.source === selectedImpactNode) neighbors.add(edge.target);
+      if (edge.target === selectedImpactNode) neighbors.add(edge.source);
+    });
+  }
+  const visibleNodes = graph.nodes.filter((node) => !selectedImpactNode || neighbors.has(node.id));
+  const visibleIds = new Set(visibleNodes.map((node) => node.id));
+  const nodeGrid = makeElement("div", "impact-node-grid");
+  visibleNodes.forEach((node) => {
+    const button = makeElement("button", `impact-node ${node.kind}`, node.label);
+    button.type = "button";
+    button.title = `${node.kind}: ${node.label}`;
+    button.setAttribute("aria-pressed", node.id === selectedImpactNode ? "true" : "false");
+    button.addEventListener("click", () => {
+      if (!intelligenceExplored) {
+        intelligenceExplored = true;
+        recordEvent("explore_intelligence");
+      }
+      selectedImpactNode = selectedImpactNode === node.id ? "" : node.id;
+      renderImpactGraph(graph);
+    });
+    const kind = makeElement("small", "", node.kind.toUpperCase());
+    button.append(kind);
+    nodeGrid.append(button);
+  });
+  const edgeList = makeElement("div", "impact-edge-list");
+  graph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+    .slice(0, 80).forEach((edge) => {
+      const source = graph.nodes.find((node) => node.id === edge.source)?.label || edge.source;
+      const target = graph.nodes.find((node) => node.id === edge.target)?.label || edge.target;
+      const detail = edge.kind === "co-changed" ? ` · ${Math.round((edge.confidence || 0) * 100)}%` : "";
+      edgeList.append(makeElement("div", `impact-edge ${edge.kind}`,
+        `${source} → ${target} · ${edge.kind}${detail}`));
+    });
+  container.append(nodeGrid, edgeList);
+  setText("#impact-count", `${visibleNodes.length}/${graph.nodes.length} NODES`);
+}
+
+function renderIntelligence(intelligence) {
+  const section = document.querySelector("#intelligence-section");
+  section.hidden = !lastReport?.pull_request || !intelligence;
+  if (section.hidden) return;
+
+  const summary = document.querySelector("#intelligence-summary");
+  summary.replaceChildren();
+  const blast = intelligence.blast_radius;
+  const freshness = intelligence.review_freshness;
+  const cards = [
+    ["BLAST RADIUS", `${blast.score}/100 · ${blast.level.toUpperCase()}`,
+      blast.factors.map((factor) => factor.label).join(" · ") || "Low structural reach"],
+    ["REVIEW FRESHNESS", freshness.status.toUpperCase(),
+      freshness.reasons.map((reason) => reason.text).join(" ")],
+    ["CHANGE MEMORY", `${intelligence.change_memory.sampled_commits} COMMITS`,
+      `${intelligence.change_memory.suggestions.length} possible missing historical companion(s)`],
+    ["SPLIT PLAN", intelligence.split_plan.recommended ? "SPLIT SUGGESTED" : "KEEP TOGETHER",
+      `${intelligence.split_plan.groups.length} coupled review group(s)`],
+  ];
+  cards.forEach(([label, value, detail]) => {
+    const card = makeElement("article", "intelligence-card");
+    card.append(makeElement("span", "", label), makeElement("strong", "", value),
+      makeElement("p", "", detail));
+    summary.append(card);
+  });
+
+  selectedImpactNode = "";
+  intelligenceExplored = false;
+  renderImpactGraph(intelligence.impact_graph);
+
+  const memoryList = document.querySelector("#memory-list");
+  memoryList.replaceChildren();
+  setText("#memory-count", `${intelligence.change_memory.links.length} LINKS`);
+  if (!intelligence.change_memory.suggestions.length) {
+    memoryList.append(makeElement("p", "section-note", intelligence.change_memory.note));
+  }
+  intelligence.change_memory.suggestions.forEach((item) => {
+    const row = makeElement("article", "intelligence-row");
+    row.append(makeElement("strong", "", item.suggested_path),
+      makeElement("code", "", `with ${item.source_path}`),
+      makeElement("p", "", `${Math.round(item.confidence * 100)}% · ${item.reason}`));
+    memoryList.append(row);
+  });
+
+  const ciList = document.querySelector("#ci-plan-list");
+  ciList.replaceChildren();
+  setText("#ci-plan-count", `${intelligence.ci_plan.jobs.length} JOBS`);
+  intelligence.ci_plan.jobs.forEach((job) => {
+    const row = makeElement("article", "intelligence-row");
+    row.append(makeElement("strong", "", job.name),
+      makeElement("span", "", `${job.lane} · ${job.evidence.toUpperCase()}`),
+      makeElement("p", "", job.reason));
+    ciList.append(row);
+  });
+
+  const splitList = document.querySelector("#split-list");
+  splitList.replaceChildren();
+  setText("#split-status", intelligence.split_plan.recommended ? "SPLIT SUGGESTED" : "NO SPLIT NEEDED");
+  intelligence.split_plan.groups.forEach((group) => {
+    const row = makeElement("article", "intelligence-row");
+    row.append(makeElement("strong", "", group.title),
+      makeElement("span", "", `${group.file_count} files · ${group.attention.toUpperCase()}`),
+      makeElement("p", "", group.paths.slice(0, 5).join(", ")));
+    splitList.append(row);
+  });
+  intelligence.split_plan.couplings.forEach((coupling) => {
+    splitList.append(makeElement("p", "coupling-note",
+      `Keep ${coupling.lanes.join(" + ")} together: ${coupling.kind} · ${coupling.label}`));
+  });
+
+  const routerList = document.querySelector("#router-list");
+  routerList.replaceChildren();
+  setText("#router-status", intelligence.reviewer_router.load_available
+    ? "BOUNDED LOAD SNAPSHOT" : "DECLARED OWNERS");
+  intelligence.reviewer_router.routes.forEach((route) => {
+    const row = makeElement("article", "intelligence-row");
+    const candidates = route.candidates.map((candidate) => candidate.observed_open_requests === null
+      ? candidate.owner : `${candidate.owner} (${candidate.observed_open_requests} open)`).join(", ");
+    row.append(makeElement("strong", "", route.lane),
+      makeElement("span", "", route.suggested ? `First option: ${route.suggested}` : "No declared owner"),
+      makeElement("p", "", candidates || `${route.unowned_files} unowned changed path(s)`));
+    routerList.append(row);
+  });
+}
+
 function renderCompanions(suggestions) {
   const section = document.querySelector("#companion-section");
   const container = document.querySelector("#companions");
@@ -514,6 +645,7 @@ function renderReport(data) {
   renderDelta(audit.review_delta);
   renderCi(data.ci_evidence);
   renderHandoff(data.review_handoff);
+  renderIntelligence(data.intelligence);
   const followupSection = document.querySelector("#followup-section");
   followupSection.hidden = !data.pull_request;
   document.querySelector("#followup-list").replaceChildren();
@@ -529,6 +661,11 @@ function renderReport(data) {
   report.hidden = false;
   report.scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+document.querySelector("#reset-impact").addEventListener("click", () => {
+  selectedImpactNode = "";
+  if (lastReport?.intelligence) renderImpactGraph(lastReport.intelligence.impact_graph);
+});
 
 document.querySelectorAll("[data-focus]").forEach((button) => {
   button.addEventListener("click", () => {

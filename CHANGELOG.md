@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 2.0.0 - 2026-10-08
+
+- Add bounded filename-only Change Memory with minimum support/confidence and explicit correlation
+  limitations.
+- Add a clickable Impact Graph joining paths, review lanes, tests, CI mappings, CODEOWNERS,
+  contracts, deployment areas, and historical co-change evidence.
+- Add Smart CI planning, Review Freshness Guard, transparent Blast Radius scoring, PR Split
+  Assistant, and bounded Reviewer Workload routing.
+- Include the new intelligence in website and JSON reports, GitHub Check summaries, and the local
+  Action; expose `blast-radius` as an Action output.
+- Keep missing or incomplete history, review, check, and workload evidence unknown instead of
+  inferring success, approval, dependency, or reviewer availability.
+
 ## 1.0.1 - 2026-10-08
 
 - Add a clearly labelled synthetic PR report that works without GitHub API quota, so first-time

@@ -15,6 +15,7 @@ import psycopg
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 
+from . import __version__
 from .analytics import EVENT_KEYS, PostgresVisitorStore, VisitorStore, metrics_error_category
 from .audit import (
     ChangedFile,
@@ -27,6 +28,11 @@ from .audit import (
 )
 from .github import MAX_PR_FILES, GitHubAppClient, TreeSnapshot, compare_trees
 from .insights import attention_item, ci_evidence, compare_audits, review_handoff
+from .intelligence import (
+    build_review_intelligence,
+    intelligence_markdown,
+    reviewer_load_snapshot,
+)
 from .policy import POLICY_PATH, AuditPolicy, parse_policy
 from .security import validate_secret_strength, verify_signature
 
@@ -202,12 +208,46 @@ def create_app(config: dict | None = None) -> Flask:
             files_truncated=len(changed_files) >= MAX_PR_FILES,
             policy=policy,
         )
+        pull = None
+        checks = None
         if pull_number:
             pull = client.pull_request_info(repository, pull_number, token)
             audit = with_review_delta(
                 client, repository, pull_number, pull, audit, snapshot, policy, token
             )
-        client.publish_check(repository, sha, audit, token)
+            try:
+                checks = client.check_runs(repository, pull["head_sha"], token)
+            except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                LOGGER.warning("Installed PR check listing unavailable")
+        history = []
+        reviewer_load = {}
+        try:
+            history = client.recent_commit_paths(repository, sha, token)
+        except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+            LOGGER.warning("Installed filename history unavailable")
+        if pull:
+            try:
+                reviewer_load = reviewer_load_snapshot(
+                    client.open_pull_requests(repository, token, limit=30)
+                )
+            except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                LOGGER.warning("Installed reviewer load snapshot unavailable")
+        ci_data = ci_evidence(checks, audit.to_dict()["review_map"]) if pull else None
+        intelligence = build_review_intelligence(
+            audit,
+            changed_files,
+            pull=pull,
+            ci=ci_data,
+            history=history,
+            reviewer_load=reviewer_load,
+        )
+        client.publish_check(
+            repository,
+            sha,
+            audit,
+            token,
+            extra_markdown=intelligence_markdown(intelligence),
+        )
         return audit
 
     @app.after_request
@@ -352,7 +392,7 @@ def create_app(config: dict | None = None) -> Flask:
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="1.0.1",
+            version=__version__,
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
             owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),
@@ -440,6 +480,18 @@ def create_app(config: dict | None = None) -> Flask:
                 "/.github/ @example/release\n"
             ),
         )
+        audit = replace(
+            audit,
+            review_delta=ReviewDelta(
+                baseline_sha="demo-reviewed-commit",
+                reviewed_at="2026-10-07T18:00:00Z",
+                changed_paths=("src/api/client.ts", ".github/workflows/release.yml"),
+                changed_path_count=2,
+                new_signals=audit.risks[:1],
+                resolved_signals=(),
+                changed_lanes=(("src", 1), (".github", 1)),
+            ),
+        )
         audit_data = audit.to_dict()
         pull = {
             "number": 42,
@@ -468,6 +520,25 @@ def create_app(config: dict | None = None) -> Flask:
             ],
             "not_observed": [],
         }
+        history = [
+            {"paths": ["src/auth/session.ts", "tests/auth/session.test.ts", "docs/auth.md"]},
+            {"paths": ["src/auth/session.ts", "tests/auth/session.test.ts"]},
+            {"paths": ["src/api/client.ts", "tests/api/client.test.ts", "openapi/api.yaml"]},
+            {"paths": ["src/api/client.ts", "tests/api/client.test.ts"]},
+        ]
+        intelligence = build_review_intelligence(
+            audit,
+            changed,
+            pull=pull,
+            ci=checks,
+            history=history,
+            reviewer_load={
+                "@example/security": 1,
+                "@example/platform": 3,
+                "@example/data": 2,
+                "@example/release": 1,
+            },
+        )
         return jsonify(
             repository={
                 "full_name": "QNode demonstration",
@@ -488,6 +559,7 @@ def create_app(config: dict | None = None) -> Flask:
             pull_request=pull,
             ci_evidence=checks,
             review_handoff=review_handoff(pull, audit_data, checks),
+            intelligence=intelligence,
         )
 
     @app.post("/api/policy-preview")
@@ -636,6 +708,27 @@ def create_app(config: dict | None = None) -> Flask:
             response["pull_request"] = pull
             response["ci_evidence"] = ci_evidence(checks, audit_data["review_map"])
             response["review_handoff"] = review_handoff(pull, audit_data, response["ci_evidence"])
+            history = []
+            reviewer_load = {}
+            if token:
+                try:
+                    history = client.recent_commit_paths(repository, ref, token)
+                except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                    LOGGER.warning("Public filename history unavailable")
+                try:
+                    reviewer_load = reviewer_load_snapshot(
+                        client.open_pull_requests(repository, token, limit=30)
+                    )
+                except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                    LOGGER.warning("Public reviewer load snapshot unavailable")
+            response["intelligence"] = build_review_intelligence(
+                audit,
+                changed_files,
+                pull=pull,
+                ci=response["ci_evidence"],
+                history=history,
+                reviewer_load=reviewer_load,
+            )
         public_cache[cache_key] = (time.monotonic(), response)
         if len(public_cache) > 256:
             oldest = min(public_cache, key=lambda key: public_cache[key][0])

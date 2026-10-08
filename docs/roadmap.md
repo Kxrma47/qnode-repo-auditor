@@ -5,6 +5,13 @@ fixed date. The maintainer reviews priorities in public issues and discussions a
 users provide examples. Privacy first, explainable, non blocking reviews remain the
 project's scope.
 
+## Shipped in October 2026
+
+- Added bounded filename Change Memory, a clickable Impact Graph, Smart CI planning, Review
+  Freshness Guard, transparent Blast Radius scoring, PR Split Assistant, and CODEOWNERS routing.
+- Kept every new feature advisory and evidence-labelled; no source contents, automatic assignments,
+  or merge gates were introduced.
+
 ## September to December 2026: reliability and clarity
 
 - Keep the GitHub App, public scanner, and documented API aligned with actual behavior.

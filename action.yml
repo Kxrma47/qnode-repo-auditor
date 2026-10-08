@@ -26,6 +26,9 @@ outputs:
   risk-count:
     description: Number of path-derived pull-request signals.
     value: ${{ steps.audit.outputs.risk_count }}
+  blast-radius:
+    description: Transparent path-metadata blast-radius score from 0 to 100.
+    value: ${{ steps.audit.outputs.blast_radius }}
 
 runs:
   using: composite
