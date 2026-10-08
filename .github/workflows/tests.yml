@@ -60,3 +60,21 @@ jobs:
       - run: npm run check:js
       - run: npm run lint:js
       - run: npm run test:js
+
+  action-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./
+        id: qnode
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+      - name: Validate Action outputs
+        env:
+          SCORE: ${{ steps.qnode.outputs.score }}
+          GRADE: ${{ steps.qnode.outputs.grade }}
+        run: test -n "$SCORE" && test -n "$GRADE"

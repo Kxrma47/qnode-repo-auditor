@@ -171,6 +171,15 @@ def test_changed_matching_test_suppresses_only_its_companion_suggestion():
     assert "src/billing.py" in sources
 
 
+def test_package_initializer_does_not_produce_synthetic_test_filename():
+    audit = audit_tree(
+        COMPLETE_TREE,
+        [ChangedFile("src/example/__init__.py", additions=1)],
+    )
+    assert audit.companion_suggestions == ()
+    assert audit.review_lanes[0].source_files == 0
+
+
 def test_lockfile_suggestion_uses_matching_workspace_not_unrelated_package():
     audit = audit_tree(
         COMPLETE_TREE + ["packages/other/package-lock.json"],

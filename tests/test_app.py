@@ -35,7 +35,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-        "version": "0.9.0",
+        "version": "1.0.0",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -116,7 +116,8 @@ def test_index_is_an_interactive_scanner_with_security_headers():
     assert b'id="policy-warning"' in response.data
     assert b'id="contract-section"' in response.data
     assert b'id="policy-simulator"' in response.data
-    assert b'href="#policy-simulator">Preview a change contract</a>' in response.data
+    assert b"qnode-social-preview.png" in response.data
+    assert b">Add QNode to CI</a>" in response.data
     assert b"Install the GitHub App" not in response.data
     assert b"github.com/apps/qnode-repository-auditor" not in response.data
     assert b'id="delta-lanes"' in response.data

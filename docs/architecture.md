@@ -1,7 +1,8 @@
 # Architecture and trust boundaries
 
 QNode is a Flask service with two entry points: a public repository or pull request
-scanner, and a GitHub App webhook. The same deterministic audit engine powers both.
+scanner, and a GitHub App webhook. It also ships a local composite GitHub Action. The same
+deterministic audit engine powers all three.
 
 1. `qnode_auditor/app.py` validates HTTP input, controls the public endpoints, and verifies
    webhook signatures before processing GitHub events.
@@ -12,6 +13,9 @@ scanner, and a GitHub App webhook. The same deterministic audit engine powers bo
    signals, companion suggestions, ownership lanes, and report data.
 5. The public web page renders that data in the browser. Installed App requests also
    publish an advisory GitHub Check on the pull request head commit.
+6. `qnode_auditor/action.py` analyzes the caller's checked-out Git tree and writes an advisory
+   Markdown brief to the workflow summary. It does not call the hosted scanner, transmit source
+   contents, require a GitHub token, post comments, or publish a Check.
 
 The public scanner requires a public GitHub repository; a configured API token is used
 only to raise the GitHub API rate limit. The installed App obtains short lived installation

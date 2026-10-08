@@ -42,6 +42,7 @@ def test_postgres_metrics_are_durable_aggregate_and_tls_is_required(monkeypatch)
     store.record(token, now=now)
     store.record_scan("repository", now=now)
     store.record_scan("pull_request", now=now)
+    store.record_event("copy_markdown", now=now)
     store.record_feedback(token, "workflow-change", True, now=now)
     store.record_feedback(token, "workflow-change", False, now=now)
     after = analytics.PostgresVisitorStore(dsn).snapshot()
@@ -56,6 +57,7 @@ def test_postgres_metrics_are_durable_aggregate_and_tls_is_required(monkeypatch)
     assert after["page_views"] == before["page_views"] + 2
     assert after["repository_scans"] == before["repository_scans"] + 1
     assert after["pull_request_scans"] == before["pull_request_scans"] + 1
+    assert after["events"].get("copy_markdown", 0) == before["events"].get("copy_markdown", 0) + 1
     assert isinstance(after["page_views"], int)
     with original_connect(dsn) as connection:
         (stored_hash,) = connection.execute(

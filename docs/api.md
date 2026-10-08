@@ -83,6 +83,12 @@ is disabled, Flask returns a standard 404 page instead.
   visitor store. One current vote per browser and signal category is kept; changing a
   vote replaces it. Repositories, paths, and report content are not stored. Do Not Track
   requests are rejected; the private owner page shows category totals only.
+- `POST /api/event`: optional same-origin aggregate measurement for one allowlisted browser
+  action: `share_report`, `copy_markdown`, `copy_handoff`, `download_json`, `star`, or
+  `use_action`. Requires the scanner's random browser cookie, `X-QNode-Event: 1`, and the
+  configured visitor store. The database keeps daily event totals only; it does not associate
+  an event with a browser hash, repository, URL, report, IP address, or user agent. Do Not Track
+  requests are rejected. Counts represent button actions, not unique users or confirmed stars.
 
 - `POST /api/policy-preview`: send JSON with `policy` (the `.qnode.json` object),
   `changed_paths` (up to 1,000 repository-relative paths), and optional

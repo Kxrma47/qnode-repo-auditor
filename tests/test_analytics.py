@@ -25,6 +25,7 @@ def test_store_counts_browsers_and_page_views_across_connections(tmp_path):
         "since": (now - timedelta(days=31)).isoformat(),
         "repository_scans": 0,
         "pull_request_scans": 0,
+        "events": {},
     }
     with sqlite3.connect(path) as connection:
         rows = connection.execute("SELECT visitor_hash FROM visitors").fetchall()
@@ -108,6 +109,20 @@ def test_scan_metrics_are_aggregate_only_and_survive_store_reopen(tmp_path):
         pass
     else:
         raise AssertionError("only aggregate scan kinds may be stored")
+
+
+def test_conversion_events_are_allowlisted_aggregate_counts(tmp_path):
+    path = tmp_path / "visitors.sqlite3"
+    store = VisitorStore(str(path))
+    store.record_event("share_report")
+    store.record_event("share_report")
+    store.record_event("use_action")
+    assert VisitorStore(str(path)).snapshot()["events"] == {
+        "share_report": 2,
+        "use_action": 1,
+    }
+    with pytest.raises(ValueError, match="invalid event"):
+        store.record_event("owner/repo")
 
 
 def test_signal_feedback_is_one_current_vote_per_browser_and_category(tmp_path):
@@ -221,10 +236,31 @@ def test_private_website_metrics_and_beacon_validation(monkeypatch, tmp_path):
     second.get("/")
     assert second.post("/api/visit", headers=headers).status_code == 204
     assert first.post("/api/visit", headers={**headers, "DNT": "1"}).status_code == 403
+    event_headers = {"X-QNode-Event": "1", "Origin": "https://localhost"}
+    assert first.post("/api/event", json={"event": "share_report"}).status_code == 403
+    assert (
+        first.post("/api/event", json={"event": "unknown"}, headers=event_headers).status_code
+        == 400
+    )
+    assert (
+        first.post(
+            "/api/event",
+            json={"event": "star"},
+            headers={**event_headers, "DNT": "1"},
+        ).status_code
+        == 403
+    )
+    assert (
+        first.post(
+            "/api/event", json={"event": "share_report"}, headers=event_headers
+        ).status_code
+        == 204
+    )
     response = first.get("/owner/metrics", headers=auth)
     assert response.status_code == 200
     assert b"2 <small>approximate unique browsers</small>" in response.data
     assert b"3 page views" in response.data
+    assert b"share_report" in response.data
     assert response.headers["Cache-Control"] == "no-store, private"
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM visitors").fetchone()[0] == 2

@@ -15,7 +15,7 @@ import psycopg
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 
-from .analytics import PostgresVisitorStore, VisitorStore, metrics_error_category
+from .analytics import EVENT_KEYS, PostgresVisitorStore, VisitorStore, metrics_error_category
 from .audit import (
     ChangedFile,
     ReviewDelta,
@@ -312,12 +312,47 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify(error="Feedback is temporarily unavailable."), 503
         return ("", 204, {"Cache-Control": "no-store"})
 
+    @app.post("/api/event")
+    def conversion_event():
+        if not visitor_store:
+            abort(404)
+        token = request.cookies.get("qnode_browser", "")
+        origin = request.headers.get("Origin", "")
+        parsed_origin = urlsplit(origin)
+        if (
+            not BROWSER_TOKEN_PATTERN.fullmatch(token)
+            or request.headers.get("X-QNode-Event") != "1"
+            or request.headers.get("DNT") == "1"
+            or (
+                origin
+                and (
+                    parsed_origin.netloc != request.host
+                    or parsed_origin.scheme not in {"http", "https"}
+                )
+            )
+        ):
+            abort(403)
+        if request.content_length is None or request.content_length > 128 or not request.is_json:
+            return jsonify(error="Invalid event body."), 400
+        values = request.get_json(silent=True)
+        if not isinstance(values, dict) or set(values) != {"event"}:
+            return jsonify(error="Provide one event."), 400
+        event_key = values.get("event")
+        if not isinstance(event_key, str) or event_key not in EVENT_KEYS:
+            return jsonify(error="Unknown event."), 400
+        try:
+            visitor_store.record_event(event_key)
+        except (sqlite3.Error, psycopg.Error) as error:
+            LOGGER.warning("Conversion metric write failed: %s", metrics_error_category(error))
+            return ("", 503, {"Cache-Control": "no-store"})
+        return ("", 204, {"Cache-Control": "no-store"})
+
     @app.get("/health")
     def health():
         return jsonify(
             status="ready",
             service="qnode-repo-auditor",
-            version="0.9.0",
+            version="1.0.0",
             public_audit=bool(app.config["PUBLIC_AUDIT_ENABLED"]),
             webhook_configured=bool(app.config["GITHUB_WEBHOOK_SECRET"]),
             owner_metrics_configured=bool(app.config["OWNER_METRICS_TOKEN"]),

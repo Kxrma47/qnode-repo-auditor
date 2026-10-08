@@ -4,3 +4,5 @@ qnode_auditor/security.py @Kxrma47
 .github/workflows/ @Kxrma47
 Dockerfile @Kxrma47
 render.yaml @Kxrma47
+action.yml @Kxrma47
+qnode_auditor/action.py @Kxrma47
