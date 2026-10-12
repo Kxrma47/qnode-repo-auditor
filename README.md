@@ -124,6 +124,11 @@ repository's ecosystem and layout—for example `tests/users/test_service.py`,
 updating a test that already exists. Manifest changes receive a workspace-aware lockfile
 suggestion when the corresponding lockfile was not changed.
 
+Kotlin sources under `src/main/` map to the corresponding `src/test/` package
+with a `Test.kt` suffix, retaining a monorepo module prefix. A test in another
+module does not satisfy that suggestion; these are filename heuristics, not
+evidence of test coverage or runtime correctness.
+
 After a human review, QNode can also show paths changed since that review plus new and resolved QNode signals. The delta is omitted if GitHub cannot provide a complete comparison; it is not a claim that code defects were fixed.
 The website also plots counts by review lane so reviewers can see which areas changed again.
 
