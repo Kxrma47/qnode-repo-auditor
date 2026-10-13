@@ -8,8 +8,11 @@
 4. Open **Review Map** to route each path lane to its matching CODEOWNERS and candidate tests.
 5. Copy **Editable review handoff** to share observed evidence and the unanswered questions
    without inventing approval, coverage, or merge readiness.
-6. Open **Review Intelligence** to inspect blast radius, freshness, repeated historical companion
-   paths, the clickable impact graph, suggested CI work, split groups, and declared reviewer routes.
+6. Open **Merge Readiness Receipt** to see why the synthetic PR is blocked and which action comes
+   next, with GitHub or QNode evidence named for every gate.
+7. Continue through **Review Intelligence** to inspect blast radius, freshness, repeated historical
+   companion paths, the clickable impact graph, suggested CI work, split groups, and declared
+   reviewer routes.
 
 No sign-in or installation is required for the public scanner. QNode reads GitHub paths,
 metadata, optional `CODEOWNERS`, and optional `.qnode.json` policy data. It does not fetch

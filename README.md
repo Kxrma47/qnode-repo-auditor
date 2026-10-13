@@ -14,7 +14,8 @@
 
 ![QNode maps a pull request into review lanes and ownership handoffs](qnode_auditor/static/qnode-social-preview.png)
 
-QNode maps risky files, missing tests, ownership gaps, and forgotten companion changes
+QNode maps risky files, missing tests, ownership gaps, forgotten companion changes, and visible
+merge blockers
 without reading application source contents. Try it in the browser without signing in, or
 run the local Action inside a pull-request workflow.
 
@@ -142,7 +143,13 @@ Signals appear in the GitHub Check summary and as file annotations. The check re
 
 ### Review intelligence graph
 
-QNode 2 adds seven connected, path-only review aids:
+QNode 2 adds eight connected, privacy-first review aids:
+
+- **Merge Readiness Receipt** separates visible conflicts, requested changes, pending or failed
+  checks, unresolved review threads, base-branch drift, and merge-queue waiting. Every gate includes
+  its evidence source and a next action. `OBSERVED GATES CLEAR` is deliberately narrower than
+  “mergeable”: private rulesets, deployments, and evidence outside bounded GitHub responses may
+  still apply.
 
 - **Change Memory** samples a bounded filename-only Git history and reports paths that repeatedly
   changed together. A relationship needs at least two observations and 40% confidence. It is a
@@ -163,7 +170,8 @@ QNode 2 adds seven connected, path-only review aids:
   requests when available. It does not infer team membership, availability, or automatically
   request a reviewer.
 
-The local Action computes Change Memory from checked-out Git objects. The hosted scanner compares
+The local Action computes Change Memory from checked-out Git objects. Without GitHub metadata it
+keeps the Merge Readiness Receipt unknown rather than inventing a result. The hosted scanner compares
 bounded Git tree metadata using a configured public token or, for an independently confirmed public
 repository where QNode is installed, a short-lived installation token. Otherwise it returns an
 explicit unavailable state and the remaining features still work.

@@ -337,6 +337,91 @@ class GitHubAppClient:
                 return latest
         return None  # Do not claim a latest review when the listing was truncated.
 
+    def pull_request_gate_context(self, repository: str, number: int, token: str) -> dict:
+        """Read merge-gate metadata and thread state without reading comment bodies."""
+        if not token:
+            raise ValueError("A GitHub token is required for merge-gate context")
+        owner, name = repository.split("/", 1)
+        query = """
+        query MergeGateContext($owner: String!, $name: String!, $number: Int!, $after: String) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              mergeable
+              mergeStateStatus
+              reviewDecision
+              isInMergeQueue
+              autoMergeRequest { enabledAt }
+              reviewRequests(first: 1) { totalCount }
+              reviewThreads(first: 100, after: $after) {
+                totalCount
+                pageInfo { hasNextPage endCursor }
+                nodes { isResolved isOutdated }
+              }
+            }
+          }
+        }
+        """
+        cursor = None
+        metadata = None
+        observed_threads = 0
+        unresolved_threads = 0
+        outdated_unresolved_threads = 0
+        total_threads = 0
+        for _ in range(MAX_REVIEW_THREADS // 100):
+            data = self._request(
+                "POST",
+                f"{self.api}/graphql",
+                token,
+                json={
+                    "query": query,
+                    "variables": {"owner": owner, "name": name, "number": number, "after": cursor},
+                },
+            )
+            if data.get("errors"):
+                raise ValueError("GitHub GraphQL returned merge-gate errors")
+            try:
+                pull = data["data"]["repository"]["pullRequest"]
+                if pull is None:
+                    raise LookupError("Pull request not found")
+                connection = pull["reviewThreads"]
+                page = connection["pageInfo"]
+                nodes = connection["nodes"]
+                if not isinstance(nodes, list):
+                    raise TypeError("Invalid review threads")
+                if metadata is None:
+                    metadata = {
+                        "mergeable": pull["mergeable"].lower(),
+                        "merge_state_status": pull["mergeStateStatus"].lower(),
+                        "review_decision": (
+                            pull["reviewDecision"].lower() if pull["reviewDecision"] else ""
+                        ),
+                        "in_merge_queue": bool(pull["isInMergeQueue"]),
+                        "auto_merge_enabled": pull["autoMergeRequest"] is not None,
+                        "review_requests": int(pull["reviewRequests"]["totalCount"]),
+                    }
+                total_threads = int(connection["totalCount"])
+                observed_threads += len(nodes)
+                unresolved_threads += sum(not node["isResolved"] for node in nodes)
+                outdated_unresolved_threads += sum(
+                    not node["isResolved"] and node["isOutdated"] for node in nodes
+                )
+                if not page["hasNextPage"]:
+                    break
+                next_cursor = page["endCursor"]
+                if not next_cursor or next_cursor == cursor:
+                    raise ValueError("Merge-gate pagination failed")
+                cursor = next_cursor
+            except (KeyError, TypeError, AttributeError) as error:
+                raise ValueError("Invalid GitHub merge-gate response") from error
+        if metadata is None:
+            raise ValueError("GitHub did not return merge-gate metadata")
+        return metadata | {
+            "review_threads": total_threads,
+            "unresolved_threads": unresolved_threads,
+            "outdated_unresolved_threads": outdated_unresolved_threads,
+            "threads_complete": observed_threads == total_threads,
+        }
+
     def review_threads(self, repository: str, number: int, token: str) -> dict:
         """Read bounded thread status and links, never review comment bodies."""
         if not token:

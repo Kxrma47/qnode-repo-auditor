@@ -482,7 +482,9 @@ function renderIntelligence(intelligence) {
   summary.replaceChildren();
   const blast = intelligence.blast_radius;
   const freshness = intelligence.review_freshness;
+  const readiness = intelligence.merge_readiness;
   const cards = [
+    ["MERGE READINESS", readiness.headline, readiness.note],
     ["BLAST RADIUS", `${blast.score}/100 · ${blast.level.toUpperCase()}`,
       blast.factors.map((factor) => factor.label).join(" · ") || "Low structural reach"],
     ["REVIEW FRESHNESS", freshness.status.toUpperCase(),
@@ -498,6 +500,34 @@ function renderIntelligence(intelligence) {
       makeElement("p", "", detail));
     summary.append(card);
   });
+
+  setText("#merge-readiness-status", readiness.status.replaceAll("-", " ").toUpperCase());
+  const readinessList = document.querySelector("#merge-readiness-list");
+  readinessList.replaceChildren();
+  const groups = [
+    ["blocker", readiness.blockers],
+    ["waiting", readiness.waiting],
+    ["warning", readiness.warnings],
+    ["satisfied", readiness.satisfied],
+  ];
+  groups.forEach(([kind, items]) => items.forEach((item) => {
+    const row = makeElement("article", `merge-gate ${kind}`);
+    row.append(makeElement("span", "merge-gate-state", kind.toUpperCase()),
+      makeElement("strong", "", item.label),
+      makeElement("p", "", item.detail),
+      makeElement("code", "", item.evidence));
+    readinessList.append(row);
+  }));
+  const mergeActions = document.querySelector("#merge-actions");
+  mergeActions.replaceChildren();
+  if (readiness.next_actions.length) {
+    mergeActions.append(makeElement("strong", "", "NEXT ACTIONS"));
+    const list = makeElement("ol");
+    readiness.next_actions.forEach((action) => list.append(makeElement("li", "", action)));
+    mergeActions.append(list);
+  } else {
+    mergeActions.append(makeElement("p", "section-note", readiness.note));
+  }
 
   selectedImpactNode = "";
   intelligenceExplored = false;

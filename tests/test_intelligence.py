@@ -5,6 +5,7 @@ from qnode_auditor.intelligence import (
     build_review_intelligence,
     change_memory,
     intelligence_markdown,
+    merge_readiness,
     reviewer_load_snapshot,
 )
 from qnode_auditor.policy import parse_policy
@@ -99,6 +100,14 @@ def test_all_review_intelligence_features_are_evidence_labelled():
         ci=ci,
         history=history,
         reviewer_load={"@alice": 3, "@org/security": 1, "@bob": 0},
+        gate_context={
+            "mergeable": "mergeable",
+            "merge_state_status": "blocked",
+            "review_decision": "changes_requested",
+            "unresolved_threads": 1,
+            "outdated_unresolved_threads": 1,
+            "threads_complete": True,
+        },
     )
 
     assert set(data) == {
@@ -109,6 +118,7 @@ def test_all_review_intelligence_features_are_evidence_labelled():
         "blast_radius",
         "split_plan",
         "reviewer_router",
+        "merge_readiness",
     }
     assert data["impact_graph"]["nodes"]
     assert any(edge["kind"] == "co-changed" for edge in data["impact_graph"]["edges"])
@@ -125,6 +135,12 @@ def test_all_review_intelligence_features_are_evidence_labelled():
     assert "not defect probability" in data["blast_radius"]["note"]
     assert "not source-code dependencies" in data["impact_graph"]["note"]
     assert "QNode review intelligence" in intelligence_markdown(data)
+    assert data["merge_readiness"]["status"] == "blocked"
+    assert {item["code"] for item in data["merge_readiness"]["blockers"]} == {
+        "changes-requested",
+        "checks-failed",
+        "unresolved-threads",
+    }
 
 
 def test_reviewer_load_counts_only_visible_requests():
@@ -158,3 +174,51 @@ def test_missing_history_and_review_evidence_remain_unknown():
     assert data["change_memory"]["suggestions"] == []
     assert data["review_freshness"]["status"] == "unknown"
     assert data["reviewer_router"]["load_available"] is False
+    assert data["merge_readiness"]["status"] == "unknown"
+
+
+def test_merge_readiness_reports_clear_only_with_complete_observed_evidence():
+    pull = {"draft": False}
+    ci = {
+        "available": True,
+        "complete": True,
+        "observed": [{"name": "test", "state": "success"}],
+        "not_observed": [],
+    }
+    gate = {
+        "mergeable": "mergeable",
+        "merge_state_status": "clean",
+        "review_decision": "approved",
+        "in_merge_queue": False,
+        "unresolved_threads": 0,
+        "threads_complete": True,
+    }
+    receipt = merge_readiness(pull, ci, gate)
+    assert receipt["status"] == "clear-observed"
+    assert receipt["complete"] is True
+    assert receipt["blockers"] == []
+    assert {item["code"] for item in receipt["satisfied"]} >= {
+        "not-draft",
+        "mergeable",
+        "approved",
+        "threads-resolved",
+        "checks-passed",
+    }
+
+
+def test_merge_readiness_separates_queue_waiting_from_blockers():
+    receipt = merge_readiness(
+        {"draft": False},
+        {"available": True, "complete": True, "observed": [], "not_observed": []},
+        {
+            "mergeable": "mergeable",
+            "merge_state_status": "blocked",
+            "review_decision": "approved",
+            "in_merge_queue": True,
+            "unresolved_threads": 0,
+            "threads_complete": True,
+        },
+    )
+    assert receipt["status"] == "queued"
+    assert receipt["blockers"] == []
+    assert receipt["waiting"][0]["code"] == "merge-queue"

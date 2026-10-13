@@ -1,3 +1,3 @@
 """QNode Repository Auditor GitHub App."""
 
-__version__ = "2.0.3"
+__version__ = "2.1.0"

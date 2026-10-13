@@ -141,9 +141,16 @@ src/client/api.ts</textarea>
         </div>
 
         <section id="intelligence-section" class="intelligence-section" hidden>
-          <div class="subheading"><span>REVIEW INTELLIGENCE</span><b>PATHS + HISTORY + OWNERSHIP</b></div>
-          <p class="section-note">A transparent review-prioritization layer. Every result is derived from filenames, bounded co-change history, declared policy, CODEOWNERS, and observed check metadata—not source contents.</p>
+          <div class="subheading"><span>REVIEW INTELLIGENCE</span><b>PATHS + HISTORY + MERGE GATES</b></div>
+          <p class="section-note">A transparent review-prioritization layer. Every result is derived from filenames, bounded co-change history, declared policy, CODEOWNERS, review state, and observed check metadata—not source contents.</p>
           <div id="intelligence-summary" class="intelligence-summary"></div>
+
+          <div class="intelligence-block merge-readiness-block">
+            <div class="subheading"><span>MERGE READINESS RECEIPT</span><b id="merge-readiness-status">OBSERVED METADATA</b></div>
+            <p class="section-note">Explains visible conflicts, reviews, checks, threads, base updates, and merge-queue state. It does not override GitHub or claim access to private rulesets.</p>
+            <div id="merge-readiness-list" class="merge-readiness-list"></div>
+            <div id="merge-actions" class="merge-actions"></div>
+          </div>
 
           <div class="intelligence-block">
             <div class="subheading"><span>INTERACTIVE IMPACT GRAPH</span><b id="impact-count">0 NODES</b></div>

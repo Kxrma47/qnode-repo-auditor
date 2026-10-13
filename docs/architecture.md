@@ -7,12 +7,14 @@ deterministic audit engine powers all three.
 1. `qnode_auditor/app.py` validates HTTP input, controls the public endpoints, and verifies
    webhook signatures before processing GitHub events.
 2. `qnode_auditor/github.py` calls the configured GitHub API and retrieves repository tree
-   paths, pull request file metadata, and the few policy files QNode needs.
+   paths, pull request file metadata, bounded merge-gate and review-thread state, and the few
+   policy files QNode needs. It does not retrieve review comment bodies for gate analysis.
 3. `qnode_auditor/policy.py` validates the repository's optional `.qnode.json` rules.
 4. `qnode_auditor/audit.py` scores repository safeguards and produces path based review
    signals, companion suggestions, ownership lanes, and report data.
 5. `qnode_auditor/intelligence.py` derives bounded filename co-change memory, the impact graph,
-   CI suggestions, freshness evidence, blast-radius factors, split groups, and reviewer routing.
+   CI suggestions, freshness evidence, blast-radius factors, split groups, reviewer routing, and
+   the conservative Merge Readiness Receipt.
 6. The public web page renders that data in the browser. Installed App requests also
    publish an advisory GitHub Check on the pull request head commit.
 7. `qnode_auditor/action.py` analyzes the caller's checked-out Git tree and writes an advisory
@@ -37,7 +39,9 @@ limitations. Reports, installation tokens, and webhook payloads are not persiste
 
 When a server-side GitHub token is available, hosted PR scans may also compare complete Git tree
 blob IDs for up to eight recent commits and read reviewer/team requests already present in one
-bounded open-PR listing. For a repository first confirmed public, QNode may use its existing
+bounded open-PR listing. They may also read aggregate mergeability, review decision, merge queue,
+auto-merge, review-request, and bounded review-thread status. QNode does not read thread comments
+for this receipt. For a repository first confirmed public, QNode may use its existing
 short-lived installation token if no general public token is configured. The Action samples up to
 24 locally available commits.
 Commit samples with partial file listings are discarded. The Action derives the same filename-only
@@ -49,4 +53,6 @@ Invalid public inputs return a client error. GitHub API failures and incomplete 
 trees are surfaced rather than silently treated as complete audits. A missing optional
 policy uses default analysis; a malformed policy is reported as a warning. Review deltas
 are omitted when their baseline cannot be verified. QNode Checks are advisory and do not
-block merging. See the [API reference](api.md) for response fields and errors.
+block merging. Merge readiness remains unknown when complete accessible evidence is unavailable,
+and even “observed gates clear” is not GitHub merge authorization. See the
+[API reference](api.md) for response fields and errors.

@@ -297,6 +297,65 @@ def test_review_threads_are_read_only_paginated_and_bounded(monkeypatch):
     assert "body" not in requests_seen[0][2]["query"]
 
 
+def test_merge_gate_context_is_bounded_metadata_without_comment_bodies(monkeypatch):
+    requests_seen = []
+
+    def fake_request(method, url, headers, timeout, **kwargs):
+        requests_seen.append(kwargs["json"])
+        after = kwargs["json"]["variables"]["after"]
+        return FakeResponse(
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "mergeable": "MERGEABLE",
+                            "mergeStateStatus": "BLOCKED",
+                            "reviewDecision": "REVIEW_REQUIRED",
+                            "isInMergeQueue": False,
+                            "autoMergeRequest": {"enabledAt": "2026-10-13T00:00:00Z"},
+                            "reviewRequests": {"totalCount": 1},
+                            "reviewThreads": {
+                                "totalCount": 2,
+                                "pageInfo": {
+                                    "hasNextPage": after is None,
+                                    "endCursor": "next" if after is None else None,
+                                },
+                                "nodes": [
+                                    {
+                                        "isResolved": after is not None,
+                                        "isOutdated": after is None,
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            }
+        )
+
+    monkeypatch.setattr("qnode_auditor.github.requests.request", fake_request)
+    context = GitHubAppClient().pull_request_gate_context("owner/repo", 3, "token")
+    assert context == {
+        "mergeable": "mergeable",
+        "merge_state_status": "blocked",
+        "review_decision": "review_required",
+        "in_merge_queue": False,
+        "auto_merge_enabled": True,
+        "review_requests": 1,
+        "review_threads": 2,
+        "unresolved_threads": 1,
+        "outdated_unresolved_threads": 1,
+        "threads_complete": True,
+    }
+    assert len(requests_seen) == 2
+    assert "comments" not in requests_seen[0]["query"]
+
+
+def test_merge_gate_context_requires_authentication():
+    with pytest.raises(ValueError, match="token"):
+        GitHubAppClient().pull_request_gate_context("owner/repo", 3, "")
+
+
 def test_review_threads_reject_missing_token_and_untrusted_links(monkeypatch):
     client = GitHubAppClient()
     with pytest.raises(ValueError, match="token"):

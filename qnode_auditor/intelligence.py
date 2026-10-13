@@ -313,6 +313,272 @@ def review_freshness(audit: Audit, pull: dict | None, ci: dict | None) -> dict:
     }
 
 
+def merge_readiness(pull: dict | None, ci: dict | None, gate_context: dict | None = None) -> dict:
+    """Explain observed PR gates without claiming access to every repository rule."""
+    if not pull:
+        return {
+            "status": "not-applicable",
+            "headline": "NOT A PULL REQUEST",
+            "blockers": [],
+            "waiting": [],
+            "warnings": [],
+            "satisfied": [],
+            "next_actions": [],
+            "complete": False,
+            "note": "Merge readiness applies only to pull requests.",
+        }
+
+    blockers: list[dict] = []
+    waiting: list[dict] = []
+    warnings: list[dict] = []
+    satisfied: list[dict] = []
+    actions: list[str] = []
+
+    def add(target: list[dict], code: str, label: str, detail: str, evidence: str) -> None:
+        target.append({"code": code, "label": label, "detail": detail, "evidence": evidence})
+
+    if pull.get("draft"):
+        add(
+            blockers,
+            "draft",
+            "Draft pull request",
+            "Mark it ready for review when complete.",
+            "pull-request",
+        )
+        actions.append("Mark the pull request ready for review.")
+    else:
+        add(
+            satisfied,
+            "not-draft",
+            "Ready for review",
+            "The pull request is not a draft.",
+            "pull-request",
+        )
+
+    if gate_context:
+        mergeable = gate_context.get("mergeable", "unknown")
+        merge_state = gate_context.get("merge_state_status", "unknown")
+        decision = gate_context.get("review_decision", "")
+        if mergeable == "conflicting" or merge_state == "dirty":
+            add(
+                blockers,
+                "conflicts",
+                "Merge conflicts",
+                "GitHub reports conflicting changes.",
+                "github-merge-state",
+            )
+            actions.append("Resolve merge conflicts against the base branch.")
+        elif mergeable == "mergeable":
+            add(
+                satisfied,
+                "mergeable",
+                "No merge conflict observed",
+                "GitHub reports the branches as mergeable.",
+                "github-merge-state",
+            )
+        else:
+            add(
+                warnings,
+                "mergeability-unknown",
+                "Mergeability still computing",
+                "GitHub has not produced a definitive mergeability result.",
+                "github-merge-state",
+            )
+
+        if decision == "changes_requested":
+            add(
+                blockers,
+                "changes-requested",
+                "Changes requested",
+                "At least one submitted review requests changes.",
+                "github-review-decision",
+            )
+            actions.append("Address the requested changes and ask for re-review.")
+        elif decision == "review_required":
+            add(
+                waiting,
+                "review-required",
+                "Approval required",
+                "GitHub reports that an approving review is still required.",
+                "github-review-decision",
+            )
+            actions.append("Request or wait for the required approving review.")
+        elif decision == "approved":
+            add(
+                satisfied,
+                "approved",
+                "Review approved",
+                "GitHub reports an approved review decision.",
+                "github-review-decision",
+            )
+        else:
+            add(
+                warnings,
+                "review-decision-unknown",
+                "Review requirement unknown",
+                "No aggregate review decision was available.",
+                "github-review-decision",
+            )
+
+        unresolved = int(gate_context.get("unresolved_threads", 0))
+        if unresolved:
+            outdated = int(gate_context.get("outdated_unresolved_threads", 0))
+            detail = f"{unresolved} review thread(s) are unresolved"
+            if outdated:
+                detail += f", including {outdated} marked outdated"
+            add(
+                blockers,
+                "unresolved-threads",
+                "Unresolved review threads",
+                detail + ".",
+                "github-review-threads",
+            )
+            actions.append("Resolve or answer every unresolved review thread.")
+        elif gate_context.get("threads_complete"):
+            add(
+                satisfied,
+                "threads-resolved",
+                "Review threads clear",
+                "No unresolved review threads were observed.",
+                "github-review-threads",
+            )
+        else:
+            add(
+                warnings,
+                "threads-incomplete",
+                "Thread listing incomplete",
+                "GitHub returned more review threads than QNode's bounded scan inspected.",
+                "github-review-threads",
+            )
+
+        if gate_context.get("in_merge_queue"):
+            add(
+                waiting,
+                "merge-queue",
+                "In merge queue",
+                "The pull request is waiting in GitHub's merge queue.",
+                "github-merge-queue",
+            )
+        elif merge_state == "behind":
+            add(
+                waiting,
+                "base-behind",
+                "Base branch moved",
+                "GitHub reports that the head branch is behind the base branch.",
+                "github-merge-state",
+            )
+            actions.append("Update the branch from the current base branch.")
+        elif merge_state == "unstable":
+            add(
+                waiting,
+                "unstable",
+                "Checks are not settled",
+                "GitHub reports an unstable merge state.",
+                "github-merge-state",
+            )
+        elif merge_state == "blocked" and not blockers:
+            add(
+                warnings,
+                "github-blocked",
+                "Another GitHub rule is blocking",
+                (
+                    "GitHub reports BLOCKED, but the accessible metadata does not identify "
+                    "the exact rule."
+                ),
+                "github-merge-state",
+            )
+            actions.append("Open GitHub's merge box to inspect repository or ruleset requirements.")
+
+    checks = (ci or {}).get("observed", []) if (ci or {}).get("available") else []
+    failed = [check for check in checks if check.get("state") == "failed"]
+    pending = [check for check in checks if check.get("state") == "pending"]
+    if failed:
+        add(
+            blockers,
+            "checks-failed",
+            "Checks failing",
+            f"{len(failed)} observed current-head check(s) failed.",
+            "observed-checks",
+        )
+        actions.append("Fix or rerun the failing current-head checks.")
+    if pending:
+        add(
+            waiting,
+            "checks-pending",
+            "Checks running",
+            f"{len(pending)} observed current-head check(s) are pending.",
+            "observed-checks",
+        )
+    if checks and not failed and not pending:
+        add(
+            satisfied,
+            "checks-passed",
+            "Observed checks passed",
+            f"All {len(checks)} observed current-head check(s) passed.",
+            "observed-checks",
+        )
+    if not ci or not ci.get("available"):
+        add(
+            warnings,
+            "checks-unavailable",
+            "Check evidence unavailable",
+            "Current-head check runs could not be inspected.",
+            "observed-checks",
+        )
+    elif not ci.get("complete"):
+        add(
+            warnings,
+            "checks-incomplete",
+            "Check listing incomplete",
+            "The bounded check-run listing may omit checks.",
+            "observed-checks",
+        )
+    if ci and ci.get("not_observed"):
+        add(
+            warnings,
+            "configured-checks-unseen",
+            "Configured labels not observed",
+            (
+                f"{len(ci['not_observed'])} configured check label(s) were not found on "
+                "the current head."
+            ),
+            "qnode-policy",
+        )
+
+    complete = bool(
+        gate_context
+        and gate_context.get("threads_complete")
+        and ci
+        and ci.get("available")
+        and ci.get("complete")
+    )
+    if blockers:
+        status, headline = "blocked", f"{len(blockers)} OBSERVED BLOCKER(S)"
+    elif gate_context and gate_context.get("in_merge_queue"):
+        status, headline = "queued", "IN MERGE QUEUE"
+    elif waiting:
+        status, headline = "waiting", f"WAITING ON {len(waiting)} GATE(S)"
+    elif complete and not warnings:
+        status, headline = "clear-observed", "OBSERVED GATES CLEAR"
+    else:
+        status, headline = "unknown", "NEEDS GITHUB CONFIRMATION"
+    return {
+        "status": status,
+        "headline": headline,
+        "blockers": blockers,
+        "waiting": waiting,
+        "warnings": warnings,
+        "satisfied": satisfied,
+        "next_actions": list(dict.fromkeys(actions)),
+        "complete": complete,
+        "auto_merge_enabled": bool(gate_context and gate_context.get("auto_merge_enabled")),
+        "note": (
+            "A receipt of accessible GitHub metadata, not a merge authorization. Private rulesets, "
+            "required deployments, and checks outside the bounded response may still apply."
+        ),
+    }
+
+
 def blast_radius(audit: Audit, changed_files: Iterable[ChangedFile], memory: dict) -> dict:
     files = tuple(changed_files)
     score = 5
@@ -488,6 +754,7 @@ def build_review_intelligence(
     ci: dict | None = None,
     history: Iterable[dict | Iterable[str]] = (),
     reviewer_load: dict[str, int] | None = None,
+    gate_context: dict | None = None,
 ) -> dict:
     files = tuple(changed_files)
     memory = change_memory(files, history)
@@ -499,6 +766,7 @@ def build_review_intelligence(
         "blast_radius": blast_radius(audit, files, memory),
         "split_plan": split_plan(audit, memory),
         "reviewer_router": reviewer_router(audit, reviewer_load),
+        "merge_readiness": merge_readiness(pull, ci, gate_context),
     }
 
 
@@ -506,11 +774,13 @@ def intelligence_markdown(data: dict) -> str:
     blast = data["blast_radius"]
     freshness = data["review_freshness"]
     memory = data["change_memory"]
+    readiness = data["merge_readiness"]
     lines = [
         "## QNode review intelligence",
         "",
         f"- **Blast radius:** {blast['score']}/100 ({blast['level']}); path-metadata heuristic.",
         f"- **Review freshness:** {freshness['status']}; not an approval decision.",
+        f"- **Merge readiness:** {readiness['headline'].lower()}; observed metadata only.",
         f"- **CI plan:** {len(data['ci_plan']['jobs'])} configured or heuristic job suggestion(s).",
         "- **Split plan:** "
         f"{'suggested' if data['split_plan']['recommended'] else 'not suggested'} across "
@@ -524,6 +794,8 @@ def intelligence_markdown(data: dict) -> str:
             f"`{suggestion['suggested_path']}` "
             f"({suggestion['support']}/{suggestion['observations']} sampled occurrences)."
         )
+    for item in (readiness["blockers"] + readiness["waiting"] + readiness["warnings"])[:6]:
+        lines.append(f"  - **{item['label']}:** {item['detail']} ({item['evidence']})")
     lines.extend(
         [
             "",

@@ -208,6 +208,12 @@ test("review intelligence renders graph, history, CI, split, and reviewer eviden
   const { context, get, text } = setup();
   context.fixture = { pull_request: { number: 4 } };
   context.intelligence = {
+    merge_readiness: { status: "blocked", headline: "2 OBSERVED BLOCKER(S)",
+      note: "Observed metadata only.", complete: true, auto_merge_enabled: false,
+      blockers: [{ label: "Checks failing", detail: "One observed check failed.",
+        evidence: "observed-checks" }], waiting: [], warnings: [],
+      satisfied: [{ label: "No merge conflict observed", detail: "Branches are mergeable.",
+        evidence: "github-merge-state" }], next_actions: ["Fix the failing check."] },
     blast_radius: { score: 72, level: "high", factors: [{ label: "Operational reach" }] },
     review_freshness: { status: "stale", reasons: [{ text: "Two paths changed after review." }] },
     change_memory: { sampled_commits: 12, links: [{ source: "src/app.py", target: "tests/test_app.py" }],
@@ -224,7 +230,9 @@ test("review intelligence renders graph, history, CI, split, and reviewer eviden
       unowned_files: 0, candidates: [{ owner: "@alice", observed_open_requests: 1 }] }] },
   };
   vm.runInContext("lastReport = fixture; renderIntelligence(intelligence)", context);
-  assert.match(text(get("#intelligence-summary")), /72\/100 · HIGH.*STALE.*12 COMMITS.*SPLIT SUGGESTED/);
+  assert.match(text(get("#intelligence-summary")), /2 OBSERVED BLOCKER.*72\/100 · HIGH.*STALE.*12 COMMITS.*SPLIT SUGGESTED/);
+  assert.match(text(get("#merge-readiness-list")), /BLOCKER.*Checks failing.*observed-checks.*SATISFIED.*No merge conflict observed/);
+  assert.match(text(get("#merge-actions")), /NEXT ACTIONS.*Fix the failing check/);
   assert.match(text(get("#impact-graph")), /src\/.*src\/app.py.*contains/);
   assert.match(text(get("#memory-list")), /tests\/test_app.py.*75%/);
   assert.match(text(get("#ci-plan-list")), /unit.*CONFIGURED/);

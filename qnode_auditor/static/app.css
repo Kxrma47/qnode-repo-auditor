@@ -161,7 +161,21 @@ button.loading .button-loader { display: block; }
 .warning { margin: 0; padding: 14px 30px; border-top: 1px solid #7b5f2b; background: rgba(255, 201, 107, .06); color: var(--amber); font-size: .78rem; }
 .risk-section { padding: 28px 30px; border-top: 1px solid var(--line); }
 .intelligence-section { padding: 28px 30px; border-top: 1px solid var(--line); background: rgba(85, 228, 255, .018); }
-.intelligence-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.intelligence-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 18px; }
+.merge-readiness-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 10px; margin-top: 14px; }
+.merge-gate { position: relative; padding: 14px; border: 1px solid var(--line); background: rgba(4, 10, 18, .48); }
+.merge-gate.blocker { border-color: rgba(255, 100, 113, .48); }
+.merge-gate.waiting { border-color: rgba(255, 202, 88, .42); }
+.merge-gate.satisfied { border-color: rgba(85, 228, 159, .35); }
+.merge-gate-state { display: block; margin-bottom: 7px; color: var(--muted); font: 700 10px/1.2 var(--mono); letter-spacing: .14em; }
+.merge-gate.blocker .merge-gate-state { color: #ff6471; }
+.merge-gate.waiting .merge-gate-state { color: #ffca58; }
+.merge-gate.satisfied .merge-gate-state { color: #55e49f; }
+.merge-gate p { margin: 7px 0; color: var(--muted); }
+.merge-gate code { color: var(--cyan); font-size: 11px; }
+.merge-actions { margin-top: 14px; padding: 14px 16px; border-left: 2px solid var(--cyan); background: rgba(85, 228, 255, .035); }
+.merge-actions ol { margin: 8px 0 0; padding-left: 20px; }
+.merge-actions li + li { margin-top: 5px; }
 .intelligence-card { min-width: 0; padding: 16px; border: 1px solid var(--line-bright); background: var(--panel); }
 .intelligence-card span { color: var(--violet); font: 700 .58rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 .intelligence-card strong { display: block; margin-top: 10px; color: var(--cyan); font: 800 .9rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }

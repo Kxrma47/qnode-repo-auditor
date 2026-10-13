@@ -35,7 +35,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-            "version": "2.0.3",
+            "version": "2.1.0",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -161,6 +161,8 @@ def test_static_demo_never_calls_github_and_is_clearly_labelled(monkeypatch):
     assert response.json["intelligence"]["change_memory"]["available"] is True
     assert response.json["intelligence"]["review_freshness"]["status"] == "stale"
     assert response.json["intelligence"]["reviewer_router"]["load_available"] is True
+    assert response.json["intelligence"]["merge_readiness"]["status"] == "blocked"
+    assert response.json["intelligence"]["merge_readiness"]["blockers"][0]["evidence"]
     assert "Synthetic" in response.json["repository"]["description"]
 
 
@@ -643,6 +645,18 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
                 }
             ]
 
+        def pull_request_gate_context(self, repository, number, token):
+            assert isinstance(number, int)
+            assert (number, token) == (42, "short-lived-token")
+            return {
+                "mergeable": "mergeable",
+                "merge_state_status": "clean",
+                "review_decision": "approved",
+                "in_merge_queue": False,
+                "unresolved_threads": 0,
+                "threads_complete": True,
+            }
+
     monkeypatch.setattr("qnode_auditor.app.GitHubAppClient", FakeClient)
     response = (
         create_app({"TESTING": True, "GITHUB_INSTALLATION_ID": "7"})
@@ -661,6 +675,8 @@ def test_public_pull_request_audit_includes_change_risks(monkeypatch):
         "tests/test_service.py"
     )
     assert response.json["review_handoff"]["total_lanes"] == 1
+    assert response.json["intelligence"]["merge_readiness"]["status"] == "unknown"
+    assert response.json["intelligence"]["merge_readiness"]["complete"] is False
     assert response.json["intelligence"]["change_memory"]["available"] is True
     assert response.json["intelligence"]["reviewer_router"]["load_available"] is True
     assert "What behavior changed" in response.json["review_handoff"]["markdown"]

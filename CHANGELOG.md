@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 2.1.0 - 2026-10-13
+
+- Add a Merge Readiness Receipt that separates observed conflicts, review decisions, unresolved
+  threads, current-head checks, base-branch drift, and merge-queue waiting into evidence-labelled
+  blockers, waiting gates, warnings, satisfied gates, and concrete next actions.
+- Keep readiness conservative: QNode says observed gates are clear only when both GitHub thread
+  metadata and the bounded current-head check listing are complete, and never treats the receipt as
+  merge authorization or proof that private rulesets were satisfied.
+- Include the receipt in the web report, JSON, GitHub Check Markdown, and synthetic instant demo
+  without reading source code or review comment bodies.
+
 ## 2.0.3 - 2026-10-08
 
 - Retry a rate-limited public scanner credential with the configured GitHub App installation

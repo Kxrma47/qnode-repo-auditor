@@ -46,8 +46,13 @@ Pull-request scans additionally contain `intelligence` with:
 - `blast_radius`: a transparent 0–100 review-prioritization score and its contributing factors;
 - `split_plan`: proposed coupled path groups without modifying the pull request; and
 - `reviewer_router`: declared owners ordered by a bounded open-request snapshot when available.
+- `merge_readiness`: evidence-labelled visible blockers, waiting gates, warnings, satisfied gates,
+  and next actions for conflicts, review decisions, unresolved threads, current-head checks,
+  base-branch drift, and merge-queue state. `complete` only means the bounded check and thread
+  listings were complete; the receipt is not merge authorization and cannot prove private rulesets.
 
-Every object contains a limitation note. Missing history, checks, review comparisons, or reviewer
+Every object contains a limitation note. Missing history, checks, merge-gate context, review
+comparisons, or reviewer
 load stays unavailable or unknown rather than becoming a positive claim.
 
 `audit` contains `score` (0–100), `grade` (A–F), `conclusion` (`success` or advisory

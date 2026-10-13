@@ -122,9 +122,7 @@ def create_app(config: dict | None = None) -> Flask:
             abort(503, description="GitHub App installation is not configured")
         return client.installation_token(int(installation_id))
 
-    def public_repository_access(
-        client: GitHubAppClient, repository: str
-    ) -> tuple[str, dict]:
+    def public_repository_access(client: GitHubAppClient, repository: str) -> tuple[str, dict]:
         """Retry a rate-limited public credential with the configured App installation.
 
         The caller must still enforce public visibility before reading repository data.
@@ -231,6 +229,7 @@ def create_app(config: dict | None = None) -> Flask:
         )
         pull = None
         checks = None
+        gate_context = None
         if pull_number:
             pull = client.pull_request_info(repository, pull_number, token)
             audit = with_review_delta(
@@ -240,6 +239,10 @@ def create_app(config: dict | None = None) -> Flask:
                 checks = client.check_runs(repository, pull["head_sha"], token)
             except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
                 LOGGER.warning("Installed PR check listing unavailable")
+            try:
+                gate_context = client.pull_request_gate_context(repository, pull_number, token)
+            except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                LOGGER.warning("Installed merge-gate context unavailable")
         history = []
         reviewer_load = None
         try:
@@ -261,6 +264,7 @@ def create_app(config: dict | None = None) -> Flask:
             ci=ci_data,
             history=history,
             reviewer_load=reviewer_load,
+            gate_context=gate_context,
         )
         client.publish_check(
             repository,
@@ -559,6 +563,18 @@ def create_app(config: dict | None = None) -> Flask:
                 "@example/data": 2,
                 "@example/release": 1,
             },
+            gate_context={
+                "mergeable": "mergeable",
+                "merge_state_status": "blocked",
+                "review_decision": "review_required",
+                "in_merge_queue": False,
+                "auto_merge_enabled": False,
+                "review_requests": 1,
+                "review_threads": 2,
+                "unresolved_threads": 1,
+                "outdated_unresolved_threads": 1,
+                "threads_complete": True,
+            },
         )
         return jsonify(
             repository={
@@ -730,6 +746,7 @@ def create_app(config: dict | None = None) -> Flask:
             response["review_handoff"] = review_handoff(pull, audit_data, response["ci_evidence"])
             history = []
             reviewer_load = None
+            gate_context = None
             intelligence_token = token
             if not intelligence_token and app.config["GITHUB_INSTALLATION_ID"]:
                 try:
@@ -749,6 +766,12 @@ def create_app(config: dict | None = None) -> Flask:
                     )
                 except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
                     LOGGER.warning("Public reviewer load snapshot unavailable")
+                try:
+                    gate_context = client.pull_request_gate_context(
+                        repository, pull_number, intelligence_token
+                    )
+                except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                    LOGGER.warning("Public merge-gate context unavailable")
             response["intelligence"] = build_review_intelligence(
                 audit,
                 changed_files,
@@ -756,6 +779,7 @@ def create_app(config: dict | None = None) -> Flask:
                 ci=response["ci_evidence"],
                 history=history,
                 reviewer_load=reviewer_load,
+                gate_context=gate_context,
             )
         public_cache[cache_key] = (time.monotonic(), response)
         if len(public_cache) > 256:
