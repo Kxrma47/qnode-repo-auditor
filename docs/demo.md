@@ -13,6 +13,9 @@
 7. Continue through **Review Intelligence** to inspect blast radius, freshness, repeated historical
    companion paths, the clickable impact graph, suggested CI work, split groups, and declared
    reviewer routes.
+8. Use the **Maintainer Decision Pack** for ten compact, evidence-labelled decisions about tests,
+   owners, rollout, rollback, contracts, dependencies, reviewer resilience, queue friction, and
+   the completeness of QNode's own inputs.
 
 No sign-in or installation is required for the public scanner. QNode reads GitHub paths,
 metadata, optional `CODEOWNERS`, and optional `.qnode.json` policy data. It does not fetch

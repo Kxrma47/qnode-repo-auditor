@@ -208,6 +208,14 @@ test("review intelligence renders graph, history, CI, split, and reviewer eviden
   const { context, get, text } = setup();
   context.fixture = { pull_request: { number: 4 } };
   context.intelligence = {
+    decision_pack: { attention_count: 1, note: "Ten deterministic lenses.", items: [
+      { key: "verification-debt", title: "Verification debt", status: "attention",
+        value: "1 source gap(s)", detail: "One changed source has no matching changed test.",
+        action: "Add a focused test.", evidence: "review-map + observed-checks" },
+      { key: "ownership-coverage", title: "Ownership coverage", status: "clear",
+        value: "100% owned", detail: "All paths have an owner.",
+        action: "Keep ownership current.", evidence: "CODEOWNERS last-match rules" },
+    ] },
     merge_readiness: { status: "blocked", headline: "2 OBSERVED BLOCKER(S)",
       note: "Observed metadata only.", complete: true, auto_merge_enabled: false,
       blockers: [{ label: "Checks failing", detail: "One observed check failed.",
@@ -233,6 +241,8 @@ test("review intelligence renders graph, history, CI, split, and reviewer eviden
   assert.match(text(get("#intelligence-summary")), /2 OBSERVED BLOCKER.*72\/100 · HIGH.*STALE.*12 COMMITS.*SPLIT SUGGESTED/);
   assert.match(text(get("#merge-readiness-list")), /BLOCKER.*Checks failing.*observed-checks.*SATISFIED.*No merge conflict observed/);
   assert.match(text(get("#merge-actions")), /NEXT ACTIONS.*Fix the failing check/);
+  assert.match(text(get("#decision-pack-list")), /Verification debt.*1 source gap.*review-map.*Add a focused test.*Ownership coverage.*100% owned/);
+  assert.equal(get("#decision-pack-status").textContent, "1/10 NEED ATTENTION");
   assert.match(text(get("#impact-graph")), /src\/.*src\/app.py.*contains/);
   assert.match(text(get("#memory-list")), /tests\/test_app.py.*75%/);
   assert.match(text(get("#ci-plan-list")), /unit.*CONFIGURED/);

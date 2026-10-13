@@ -529,6 +529,21 @@ function renderIntelligence(intelligence) {
     mergeActions.append(makeElement("p", "section-note", readiness.note));
   }
 
+  const decisionPack = intelligence.decision_pack;
+  setText("#decision-pack-status", `${decisionPack.attention_count}/10 NEED ATTENTION`);
+  const decisionList = document.querySelector("#decision-pack-list");
+  decisionList.replaceChildren();
+  decisionPack.items.forEach((item, index) => {
+    const card = makeElement("article", `decision-lens ${item.status}`);
+    card.append(makeElement("span", "decision-index", String(index + 1).padStart(2, "0")),
+      makeElement("strong", "", item.title),
+      makeElement("b", "", item.value),
+      makeElement("p", "", item.detail),
+      makeElement("code", "", item.evidence),
+      makeElement("small", "", item.action));
+    decisionList.append(card);
+  });
+
   selectedImpactNode = "";
   intelligenceExplored = false;
   renderImpactGraph(intelligence.impact_graph);

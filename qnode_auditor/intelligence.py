@@ -746,6 +746,242 @@ def reviewer_load_snapshot(pulls: Iterable[dict]) -> dict[str, int]:
     return dict(counts)
 
 
+def maintainer_decision_pack(
+    audit: Audit,
+    changed_files: Iterable[ChangedFile],
+    *,
+    ci: dict | None,
+    memory: dict,
+    readiness: dict,
+    router: dict,
+    gate_context: dict | None,
+) -> dict:
+    """Build ten bounded, path-metadata decision lenses for maintainers."""
+    files = tuple(changed_files)
+    paths = [file.filename for file in files if file.status != "removed"]
+    total_files = len(paths)
+    total_sources = sum(lane.source_files for lane in audit.review_lanes)
+    test_matches = sum(lane.test_path_matches for lane in audit.review_lanes)
+    unowned = sum(lane.unowned_files for lane in audit.review_lanes)
+    configured_unseen = len((ci or {}).get("not_observed", ()))
+
+    def lens(
+        key: str,
+        title: str,
+        status: str,
+        value: str,
+        detail: str,
+        action: str,
+        evidence: str,
+    ) -> dict:
+        return {
+            "key": key,
+            "title": title,
+            "status": status,
+            "value": value,
+            "detail": detail,
+            "action": action,
+            "evidence": evidence,
+        }
+
+    source_gaps = max(0, total_sources - test_matches)
+    verification_status = "attention" if source_gaps or configured_unseen else "clear"
+    verification = lens(
+        "verification-debt",
+        "Verification debt",
+        verification_status,
+        f"{source_gaps} source gap(s)",
+        f"{test_matches}/{total_sources} changed source path(s) have a matching changed test path; "
+        f"{configured_unseen} configured check label(s) were not observed.",
+        "Add focused tests or confirm why the mapped verification is not required.",
+        "review-map + observed-checks",
+    )
+
+    owned = max(0, total_files - unowned)
+    ownership_pct = round(owned * 100 / total_files) if total_files else 100
+    ownership = lens(
+        "ownership-coverage",
+        "Ownership coverage",
+        "attention" if unowned else "clear",
+        f"{ownership_pct}% owned",
+        f"{unowned} of {total_files} changed path(s) have no matching declared CODEOWNER.",
+        "Assign an owner or explain the reviewer responsible for uncovered paths.",
+        "CODEOWNERS last-match rules",
+    )
+
+    largest_lane = max(audit.review_lanes, key=lambda item: item.file_count, default=None)
+    largest_share = (
+        round(largest_lane.file_count * 100 / total_files) if largest_lane and total_files else 0
+    )
+    concentration = lens(
+        "change-concentration",
+        "Change concentration",
+        "watch" if len(audit.review_lanes) >= 3 else "clear",
+        f"{largest_share}% largest lane",
+        (
+            f"{len(audit.review_lanes)} lane(s); "
+            f"{largest_lane.label if largest_lane else 'none'} carries the largest file share."
+        ),
+        "Use the split plan when unrelated lanes can be reviewed independently.",
+        "changed-path lanes",
+    )
+
+    rollout_areas = sorted({area for path in paths if (area := _deployment_area(path))})
+    rollout = lens(
+        "rollout-surface",
+        "Rollout surface",
+        "attention" if rollout_areas else "clear",
+        f"{len(rollout_areas)} area(s)",
+        ", ".join(rollout_areas) if rollout_areas else "No deployment-like path was observed.",
+        "Confirm staging, health checks, concurrency, and production approval for rollout paths.",
+        "deployment-path heuristic",
+    )
+
+    rollback_tokens = ("rollback", "revert", "restore", ".down.", "down.sql")
+    rollback_paths = [
+        path for path in paths if any(token in path.lower() for token in rollback_tokens)
+    ]
+    rollback = lens(
+        "rollback-evidence",
+        "Rollback evidence",
+        "attention"
+        if rollout_areas and not rollback_paths
+        else "clear"
+        if rollout_areas
+        else "unknown",
+        f"{len(rollback_paths)} path(s)",
+        (
+            ", ".join(rollback_paths[:3])
+            if rollback_paths
+            else "No rollback-labelled changed path was observed."
+        ),
+        "Document or test the rollback path when this change affects delivery or migrations.",
+        "filename evidence only",
+    )
+
+    contract_tokens = ("openapi", "swagger", ".proto", "graphql", "schema", "public/api")
+    contract_paths = [
+        path for path in paths if any(token in path.lower() for token in contract_tokens)
+    ]
+    contract_missing = [
+        contract for contract in audit.change_contracts if contract.status in {"missing", "unknown"}
+    ]
+    contract_watch = lens(
+        "contract-surface",
+        "Contract surface",
+        "attention"
+        if contract_paths and contract_missing
+        else "watch"
+        if contract_paths
+        else "clear",
+        f"{len(contract_paths)} contract path(s)",
+        (
+            f"{len(contract_missing)} declared contract(s) lack complete companion evidence."
+            if contract_paths
+            else "No API or schema-like changed path was observed."
+        ),
+        "Verify compatibility, generated clients, documentation, and contract tests.",
+        "paths + .qnode.json contracts",
+    )
+
+    manifest_names = {
+        "package.json",
+        "pyproject.toml",
+        "requirements.txt",
+        "cargo.toml",
+        "go.mod",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+    }
+    manifests = [path for path in paths if PurePosixPath(path.lower()).name in manifest_names]
+    lock_gaps = [item for item in audit.companion_suggestions if item.kind == "lockfile"]
+    dependency = lens(
+        "dependency-sync",
+        "Dependency synchronization",
+        "attention" if lock_gaps else "watch" if manifests else "clear",
+        f"{len(lock_gaps)} lock gap(s)",
+        (
+            f"{len(manifests)} dependency manifest(s) changed; "
+            f"{len(lock_gaps)} need lockfile attention."
+        ),
+        "Update the workspace-matched lockfile or document why resolution is unchanged.",
+        "manifest + companion-path heuristic",
+    )
+
+    routed = [route for route in router["routes"] if route["candidates"]]
+    single_candidate = sum(len(route["candidates"]) == 1 for route in routed)
+    routing = lens(
+        "reviewer-resilience",
+        "Reviewer resilience",
+        "attention"
+        if routed and single_candidate == len(routed)
+        else "unknown"
+        if not routed
+        else "clear",
+        f"{single_candidate}/{len(routed)} single-owner lane(s)",
+        "Counts declared candidates only; team membership and availability are not inferred.",
+        "Add a second declared owner for critical lanes with one visible candidate.",
+        "CODEOWNERS + bounded reviewer load",
+    )
+
+    friction_count = len(readiness["blockers"]) + len(readiness["waiting"])
+    friction = lens(
+        "queue-friction",
+        "Merge queue friction",
+        "attention" if readiness["blockers"] else "watch" if readiness["waiting"] else "clear",
+        f"{friction_count} active gate(s)",
+        readiness["headline"],
+        readiness["next_actions"][0]
+        if readiness["next_actions"]
+        else "Keep observing GitHub merge state.",
+        "merge-readiness receipt",
+    )
+
+    evidence_checks = {
+        "checks": bool(ci and ci.get("available") and ci.get("complete")),
+        "merge gates": bool(gate_context and gate_context.get("threads_complete")),
+        "history": bool(memory.get("available")),
+        "review delta": audit.review_delta is not None,
+        "reviewer load": bool(router.get("load_available")),
+        "complete paths": not audit.tree_truncated and not audit.files_truncated,
+    }
+    known = sum(evidence_checks.values())
+    confidence = lens(
+        "evidence-confidence",
+        "Evidence confidence",
+        "clear" if known == len(evidence_checks) else "watch" if known >= 3 else "unknown",
+        f"{known}/{len(evidence_checks)} sources",
+        ", ".join(
+            f"{name}: {'yes' if available else 'unknown'}"
+            for name, available in evidence_checks.items()
+        ),
+        "Treat unknown evidence as unknown; do not convert it into a pass.",
+        "bounded-input ledger",
+    )
+
+    items = [
+        verification,
+        ownership,
+        concentration,
+        rollout,
+        rollback,
+        contract_watch,
+        dependency,
+        routing,
+        friction,
+        confidence,
+    ]
+    return {
+        "items": items,
+        "attention_count": sum(item["status"] == "attention" for item in items),
+        "note": (
+            "Ten deterministic decision lenses from bounded paths and GitHub metadata; statuses "
+            "are review prompts, not proof of defects, coverage, ownership availability, or safety."
+        ),
+    }
+
+
 def build_review_intelligence(
     audit: Audit,
     changed_files: Iterable[ChangedFile],
@@ -758,6 +994,8 @@ def build_review_intelligence(
 ) -> dict:
     files = tuple(changed_files)
     memory = change_memory(files, history)
+    readiness = merge_readiness(pull, ci, gate_context)
+    router = reviewer_router(audit, reviewer_load)
     return {
         "change_memory": memory,
         "impact_graph": impact_graph(audit, files, memory),
@@ -765,8 +1003,17 @@ def build_review_intelligence(
         "review_freshness": review_freshness(audit, pull, ci),
         "blast_radius": blast_radius(audit, files, memory),
         "split_plan": split_plan(audit, memory),
-        "reviewer_router": reviewer_router(audit, reviewer_load),
-        "merge_readiness": merge_readiness(pull, ci, gate_context),
+        "reviewer_router": router,
+        "merge_readiness": readiness,
+        "decision_pack": maintainer_decision_pack(
+            audit,
+            files,
+            ci=ci,
+            memory=memory,
+            readiness=readiness,
+            router=router,
+            gate_context=gate_context,
+        ),
     }
 
 
@@ -775,12 +1022,14 @@ def intelligence_markdown(data: dict) -> str:
     freshness = data["review_freshness"]
     memory = data["change_memory"]
     readiness = data["merge_readiness"]
+    decision_pack = data["decision_pack"]
     lines = [
         "## QNode review intelligence",
         "",
         f"- **Blast radius:** {blast['score']}/100 ({blast['level']}); path-metadata heuristic.",
         f"- **Review freshness:** {freshness['status']}; not an approval decision.",
         f"- **Merge readiness:** {readiness['headline'].lower()}; observed metadata only.",
+        f"- **Decision pack:** {decision_pack['attention_count']}/10 lens(es) need attention.",
         f"- **CI plan:** {len(data['ci_plan']['jobs'])} configured or heuristic job suggestion(s).",
         "- **Split plan:** "
         f"{'suggested' if data['split_plan']['recommended'] else 'not suggested'} across "
@@ -796,6 +1045,10 @@ def intelligence_markdown(data: dict) -> str:
         )
     for item in (readiness["blockers"] + readiness["waiting"] + readiness["warnings"])[:6]:
         lines.append(f"  - **{item['label']}:** {item['detail']} ({item['evidence']})")
+    for item in [item for item in decision_pack["items"] if item["status"] == "attention"][:5]:
+        lines.append(
+            f"  - **{item['title']}:** {item['value']}. {item['action']} ({item['evidence']})"
+        )
     lines.extend(
         [
             "",

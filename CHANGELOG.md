@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.2.0 - 2026-10-13
+
+- Add a ten-lens Maintainer Decision Pack covering verification debt, ownership coverage, change
+  concentration, rollout surface, rollback evidence, API/contract surface, dependency
+  synchronization, reviewer resilience, merge-queue friction, and evidence confidence.
+- Give every lens a deterministic status, measurable value, evidence boundary, and concrete next
+  action while keeping missing metadata unknown and path heuristics explicitly non-authoritative.
+- Render the pack in the website, JSON, GitHub Check Markdown, and instant demo without new GitHub
+  permissions, source-content access, or stored repository reports.
+
 ## 2.1.0 - 2026-10-13
 
 - Add a Merge Readiness Receipt that separates observed conflicts, review decisions, unresolved

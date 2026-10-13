@@ -35,7 +35,7 @@ def test_health_exposes_operational_capabilities_not_secrets():
         "public_audit": True,
         "service": "qnode-repo-auditor",
         "status": "ready",
-            "version": "2.1.0",
+            "version": "2.2.0",
         "webhook_configured": True,
         "owner_metrics_configured": False,
         "visitor_metrics_configured": False,
@@ -163,6 +163,7 @@ def test_static_demo_never_calls_github_and_is_clearly_labelled(monkeypatch):
     assert response.json["intelligence"]["reviewer_router"]["load_available"] is True
     assert response.json["intelligence"]["merge_readiness"]["status"] == "blocked"
     assert response.json["intelligence"]["merge_readiness"]["blockers"][0]["evidence"]
+    assert len(response.json["intelligence"]["decision_pack"]["items"]) == 10
     assert "Synthetic" in response.json["repository"]["description"]
 
 

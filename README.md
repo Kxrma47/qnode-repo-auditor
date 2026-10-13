@@ -176,6 +176,28 @@ bounded Git tree metadata using a configured public token or, for an independent
 repository where QNode is installed, a short-lived installation token. Otherwise it returns an
 explicit unavailable state and the remaining features still work.
 
+### Maintainer Decision Pack
+
+QNode 2.2 adds ten compact decision lenses to every PR report:
+
+1. **Verification debt** compares changed source paths with matching changed test paths and
+   configured check labels observed on the current head.
+2. **Ownership coverage** reports the percentage of changed paths matched by declared CODEOWNERS.
+3. **Change concentration** shows whether one lane dominates or review is spread across areas.
+4. **Rollout surface** identifies workflow, runtime delivery, infrastructure, migration, and
+   cluster-delivery paths.
+5. **Rollback evidence** looks for changed rollback-labelled paths when rollout paths are present.
+6. **Contract surface** highlights API, OpenAPI, protobuf, GraphQL, and schema-like changes plus
+   incomplete repository-declared change contracts.
+7. **Dependency synchronization** joins changed manifests with workspace-aware lockfile gaps.
+8. **Reviewer resilience** identifies lanes that rely on a single declared owner candidate.
+9. **Merge queue friction** compresses active blockers and waiting gates into one operational view.
+10. **Evidence confidence** shows which bounded inputs were actually available instead of turning
+    missing history, checks, review state, workload, or complete path listings into a pass.
+
+Each lens includes a status, measurable value, evidence source, and next action. They are review
+prompts—not proof of defects, coverage, reviewer availability, safe rollout, or merge permission.
+
 ### Review map
 
 Every pull-request report also creates a privacy-first review map. Changed files are grouped into logical lanes such as `src/`, `.github/`, or an individual `packages/web/` monorepo package. Lanes are ordered by attention level and churn, and each one shows its file count, line changes, representative paths, relevant risk signals, matching CODEOWNERS, and any ownership gaps. GitHub's last-matching-rule behavior is preserved, including team, user, and email owners. This helps teams delegate a mixed pull request without pretending that one approval covers every area.

@@ -119,6 +119,7 @@ def test_all_review_intelligence_features_are_evidence_labelled():
         "split_plan",
         "reviewer_router",
         "merge_readiness",
+        "decision_pack",
     }
     assert data["impact_graph"]["nodes"]
     assert any(edge["kind"] == "co-changed" for edge in data["impact_graph"]["edges"])
@@ -141,6 +142,23 @@ def test_all_review_intelligence_features_are_evidence_labelled():
         "checks-failed",
         "unresolved-threads",
     }
+    assert len(data["decision_pack"]["items"]) == 10
+    assert {item["key"] for item in data["decision_pack"]["items"]} == {
+        "verification-debt",
+        "ownership-coverage",
+        "change-concentration",
+        "rollout-surface",
+        "rollback-evidence",
+        "contract-surface",
+        "dependency-sync",
+        "reviewer-resilience",
+        "queue-friction",
+        "evidence-confidence",
+    }
+    assert all(
+        item["detail"] and item["action"] and item["evidence"]
+        for item in data["decision_pack"]["items"]
+    )
 
 
 def test_reviewer_load_counts_only_visible_requests():
@@ -222,3 +240,62 @@ def test_merge_readiness_separates_queue_waiting_from_blockers():
     assert receipt["status"] == "queued"
     assert receipt["blockers"] == []
     assert receipt["waiting"][0]["code"] == "merge-queue"
+
+
+def test_decision_pack_keeps_unknown_inputs_honest_and_flags_path_evidence():
+    audit, files = fixture()
+    data = build_review_intelligence(audit, files, pull={"draft": False})
+    items = {item["key"]: item for item in data["decision_pack"]["items"]}
+    assert items["rollout-surface"]["status"] == "attention"
+    assert items["rollback-evidence"]["status"] == "attention"
+    assert items["evidence-confidence"]["status"] == "unknown"
+    assert items["ownership-coverage"]["value"] == "100% owned"
+    assert items["queue-friction"]["detail"] == "NEEDS GITHUB CONFIRMATION"
+
+
+def test_all_ten_decision_lenses_have_independent_trigger_coverage():
+    files = (
+        ChangedFile("src/app.py", additions=20),
+        ChangedFile("openapi/schema.yaml", additions=4),
+        ChangedFile("package.json", additions=2),
+        ChangedFile("infra/rollback.sql", additions=8),
+        ChangedFile(".github/workflows/release.yml", additions=3),
+    )
+    audit = audit_tree(
+        [file.filename for file in files] + ["README.md", "LICENSE", "SECURITY.md"],
+        files,
+    )
+    data = build_review_intelligence(
+        audit,
+        files,
+        pull={"draft": False},
+        ci={
+            "available": True,
+            "complete": True,
+            "observed": [{"name": "test", "state": "failed"}],
+            "not_observed": ["integration"],
+        },
+        history=[
+            ["src/app.py", "tests/test_app.py"],
+            ["src/app.py", "tests/test_app.py"],
+        ],
+        gate_context={
+            "mergeable": "conflicting",
+            "merge_state_status": "dirty",
+            "review_decision": "review_required",
+            "in_merge_queue": False,
+            "unresolved_threads": 0,
+            "threads_complete": True,
+        },
+    )
+    items = {item["key"]: item for item in data["decision_pack"]["items"]}
+    assert items["verification-debt"]["status"] == "attention"
+    assert items["ownership-coverage"]["status"] == "attention"
+    assert items["change-concentration"]["status"] == "watch"
+    assert items["rollout-surface"]["status"] == "attention"
+    assert items["rollback-evidence"]["status"] == "clear"
+    assert items["contract-surface"]["status"] == "watch"
+    assert items["dependency-sync"]["status"] == "attention"
+    assert items["reviewer-resilience"]["status"] == "unknown"
+    assert items["queue-friction"]["status"] == "attention"
+    assert items["evidence-confidence"]["status"] == "watch"

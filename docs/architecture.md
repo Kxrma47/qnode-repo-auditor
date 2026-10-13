@@ -14,7 +14,7 @@ deterministic audit engine powers all three.
    signals, companion suggestions, ownership lanes, and report data.
 5. `qnode_auditor/intelligence.py` derives bounded filename co-change memory, the impact graph,
    CI suggestions, freshness evidence, blast-radius factors, split groups, reviewer routing, and
-   the conservative Merge Readiness Receipt.
+   the conservative Merge Readiness Receipt and ten-lens Maintainer Decision Pack.
 6. The public web page renders that data in the browser. Installed App requests also
    publish an advisory GitHub Check on the pull request head commit.
 7. `qnode_auditor/action.py` analyzes the caller's checked-out Git tree and writes an advisory

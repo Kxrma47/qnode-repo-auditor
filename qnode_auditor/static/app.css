@@ -176,6 +176,17 @@ button.loading .button-loader { display: block; }
 .merge-actions { margin-top: 14px; padding: 14px 16px; border-left: 2px solid var(--cyan); background: rgba(85, 228, 255, .035); }
 .merge-actions ol { margin: 8px 0 0; padding-left: 20px; }
 .merge-actions li + li { margin-top: 5px; }
+.decision-pack-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 10px; margin-top: 14px; }
+.decision-lens { position: relative; min-width: 0; padding: 15px; border: 1px solid var(--line); background: var(--panel); }
+.decision-lens.attention { border-color: rgba(255, 100, 113, .48); }
+.decision-lens.watch { border-color: rgba(255, 202, 88, .38); }
+.decision-lens.clear { border-color: rgba(85, 228, 159, .3); }
+.decision-index { position: absolute; top: 14px; right: 14px; color: var(--line-bright); font: 800 11px/1 var(--mono); }
+.decision-lens strong { display: block; padding-right: 28px; font-size: .78rem; }
+.decision-lens b { display: block; margin-top: 8px; color: var(--cyan); font: 800 .8rem/1.2 var(--mono); }
+.decision-lens p { margin: 8px 0; color: var(--muted); font-size: .68rem; line-height: 1.45; }
+.decision-lens code { display: block; overflow-wrap: anywhere; color: var(--violet); font-size: .61rem; }
+.decision-lens small { display: block; margin-top: 9px; color: var(--text); font-size: .65rem; line-height: 1.4; }
 .intelligence-card { min-width: 0; padding: 16px; border: 1px solid var(--line-bright); background: var(--panel); }
 .intelligence-card span { color: var(--violet); font: 700 .58rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 .intelligence-card strong { display: block; margin-top: 10px; color: var(--cyan); font: 800 .9rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
