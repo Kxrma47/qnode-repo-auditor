@@ -209,6 +209,12 @@ For monorepos, lanes also show candidate existing test files and any CI jobs dec
 Use the Review Map filters to show source paths, hide likely generated paths, or show only
 paths changed since the latest submitted human review. Filtering changes the on-screen view,
 not the audit, score, or JSON export. If the review comparison is unavailable, QNode says so.
+Search paths, lanes, owners, and risk signals from the Review Map; press `/` to focus search.
+Mark lanes inspected as a personal review checklist, optionally show only unmarked lanes, and
+clear your local marks at any time. For a live PR, QNode saves marks only in this browser's local
+storage, scoped to the repository, PR number, and head commit. A new commit starts a fresh
+checklist. The demo uses page-only marks. These marks do not change the audit, JSON export,
+GitHub review state, or approval status.
 For a PR, QNode separately shows the check runs GitHub reports for its head commit. A mapped
 job name is highlighted, but QNode does not infer required branch checks or claim a skipped or
 unobserved job ran. GitHub's latest-check listing is limited to 100 results and marked incomplete

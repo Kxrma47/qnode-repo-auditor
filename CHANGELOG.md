@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.3.0 - 2026-10-26
+
+- Add a searchable, keyboard-accessible Review Map session with personal lane inspection marks,
+  an unmarked-only view, and a clear control. Save live PR marks in browser-local storage scoped
+  to the PR head commit; leave the audit and GitHub review state unchanged.
+
 ## 2.2.0 - 2026-10-13
 
 - Add a ten-lens Maintainer Decision Pack covering verification debt, ownership coverage, change

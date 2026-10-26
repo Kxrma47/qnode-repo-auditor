@@ -6,6 +6,11 @@ const report = document.querySelector("#report");
 const actionMessage = document.querySelector("#action-message");
 let lastReport = null;
 let reviewFocus = "all";
+let reviewQuery = "";
+let reviewUnmarkedOnly = false;
+let inspectedLanes = new Set();
+let reviewSessionKey = "";
+let reviewSessionPersistent = false;
 let selectedImpactNode = "";
 let intelligenceExplored = false;
 
@@ -267,6 +272,40 @@ function renderContracts(contracts) {
   contracts.forEach((contract) => container.append(contractCard(contract)));
 }
 
+function loadReviewSession(data) {
+  inspectedLanes = new Set();
+  reviewSessionPersistent = false;
+  const head = data.pull_request?.head_sha;
+  reviewSessionKey = !data.demo && head
+    ? `qnode:review-session:v1:${data.repository.full_name.toLowerCase()}#${data.pull_request.number}@${head}`
+    : "";
+  if (!reviewSessionKey) return;
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(reviewSessionKey) || "[]");
+    if (Array.isArray(saved)) inspectedLanes = new Set(saved.filter((lane) => typeof lane === "string"));
+    reviewSessionPersistent = true;
+  } catch {
+    // Browser storage may be unavailable; the in-page session still works.
+  }
+}
+
+function saveReviewSession() {
+  if (!reviewSessionKey) return;
+  try {
+    window.localStorage.setItem(reviewSessionKey, JSON.stringify([...inspectedLanes]));
+    reviewSessionPersistent = true;
+  } catch {
+    reviewSessionPersistent = false;
+  }
+}
+
+function renderReviewProgress(lanes) {
+  const count = lanes.filter((lane) => inspectedLanes.has(lane.label)).length;
+  const persistence = reviewSessionPersistent ? "Saved for this head commit in this browser."
+    : "Available only in this page session.";
+  setText("#review-progress", `${count}/${lanes.length} lanes marked inspected locally. ${persistence}`);
+}
+
 function renderReviewMap(lanes) {
   const section = document.querySelector("#review-map-section");
   const container = document.querySelector("#review-lanes");
@@ -279,28 +318,57 @@ function renderReviewMap(lanes) {
     && !/(?:test|spec)\.[^.]+$/.test(path);
   const generatedPath = (path) => /(?:^|\/)(?:generated|gen|dist|build|vendor|node_modules)\//i.test(path)
     || /(?:\.min\.(?:js|css)|\.g\.(?:py|go)|\.generated\.)/i.test(path);
-  const visible = lanes.map((lane) => ({ ...lane, visiblePaths: lane.paths.filter((path) =>
-    reviewFocus === "all" || (reviewFocus === "source" && sourcePath(path))
-      || (reviewFocus === "generated" && !generatedPath(path))
-      || (reviewFocus === "review" && changed.has(path)),
-  ) })).filter((lane) => lane.visiblePaths.length);
+  const visible = lanes.map((lane) => {
+    let visiblePaths = lane.paths.filter((path) =>
+      reviewFocus === "all" || (reviewFocus === "source" && sourcePath(path))
+        || (reviewFocus === "generated" && !generatedPath(path))
+        || (reviewFocus === "review" && changed.has(path)));
+    const laneMatch = [lane.label, ...(lane.owners || []), ...(lane.signals || [])]
+      .some((value) => value.toLowerCase().includes(reviewQuery));
+    if (reviewQuery && !laneMatch) {
+      visiblePaths = visiblePaths.filter((path) => path.toLowerCase().includes(reviewQuery));
+    }
+    return { ...lane, visiblePaths };
+  }).filter((lane) => lane.visiblePaths.length && (!reviewUnmarkedOnly || !inspectedLanes.has(lane.label)));
+  renderReviewProgress(lanes);
   setText("#lane-count", `${visible.length}/${lanes.length} LANES`);
   setText("#focus-message", reviewFocus === "review" && !delta
     ? "No complete submitted-review comparison is available for this PR."
     : reviewFocus === "review" && !visible.length
       ? "No file in the current PR appears in the since-review tree difference. Other repository paths may still have changed."
-      : `${visible.reduce((count, lane) => count + lane.visiblePaths.length, 0)} visible paths. Filters affect the display only; signals and exported evidence remain unchanged.`);
+      : `${visible.reduce((count, lane) => count + lane.visiblePaths.length, 0)} visible paths. Filters and local marks affect this display only; signals and exported evidence remain unchanged.`);
   if (!visible.length) {
     container.append(makeElement("p", "section-note", "No paths match this display filter."));
   }
 
   visible.forEach((lane) => {
-    const card = makeElement("article", `review-lane ${lane.attention}`);
+    const card = makeElement("article", `review-lane ${lane.attention}${inspectedLanes.has(lane.label) ? " inspected" : ""}`);
     const header = makeElement("div", "lane-header");
     header.append(
       makeElement("strong", "", lane.label),
       makeElement("span", "lane-attention", lane.attention.toUpperCase()),
     );
+    const action = makeElement("div", "lane-action");
+    const mark = makeElement("button", "ghost-button", inspectedLanes.has(lane.label) ? "Inspected locally" : "Mark inspected");
+    mark.type = "button";
+    mark.setAttribute("aria-label", `Mark ${lane.label} inspected locally`);
+    mark.setAttribute("aria-pressed", inspectedLanes.has(lane.label) ? "true" : "false");
+    mark.addEventListener("click", () => {
+      if (inspectedLanes.has(lane.label)) inspectedLanes.delete(lane.label);
+      else inspectedLanes.add(lane.label);
+      saveReviewSession();
+      if (reviewUnmarkedOnly) {
+        renderReviewMap(lanes);
+        document.querySelector("#review-search").focus();
+      } else {
+        const inspected = inspectedLanes.has(lane.label);
+        mark.textContent = inspected ? "Inspected locally" : "Mark inspected";
+        mark.setAttribute("aria-pressed", inspected ? "true" : "false");
+        card.classList.toggle("inspected", inspected);
+        renderReviewProgress(lanes);
+      }
+    });
+    action.append(mark);
     const metrics = makeElement(
       "p",
       "lane-metrics",
@@ -338,7 +406,7 @@ function renderReviewMap(lanes) {
     const jobs = makeElement("p", "lane-tests", lane.configured_jobs?.length
       ? `Configured CI jobs: ${lane.configured_jobs.join(", ")}`
       : "No CI job mapping configured");
-    card.append(header, metrics, focus, ownership, testEvidence, targets, jobs, questions, paths);
+    card.append(header, action, metrics, focus, ownership, testEvidence, targets, jobs, questions, paths);
     container.append(card);
   });
 }
@@ -655,6 +723,11 @@ function renderPullRequest(pull) {
 
 function renderReport(data) {
   lastReport = data;
+  reviewQuery = "";
+  reviewUnmarkedOnly = false;
+  document.querySelector("#review-search").value = "";
+  document.querySelector("#review-unmarked").setAttribute("aria-pressed", "false");
+  loadReviewSession(data);
   const { repository, audit } = data;
   setText("#score", audit.score);
   setText("#report-grade", `GRADE ${audit.grade}`);
@@ -721,6 +794,52 @@ document.querySelectorAll("[data-focus]").forEach((button) => {
     });
     if (lastReport) renderReviewMap(lastReport.audit.review_map || []);
   });
+});
+
+document.querySelector("#review-search").addEventListener("input", (event) => {
+  reviewQuery = event.target.value.trim().toLowerCase();
+  if (lastReport) renderReviewMap(lastReport.audit.review_map || []);
+});
+
+document.querySelector("#review-search").addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  reviewQuery = "";
+  event.target.value = "";
+  if (lastReport) renderReviewMap(lastReport.audit.review_map || []);
+});
+
+document.querySelector("#clear-review-search").addEventListener("click", () => {
+  reviewQuery = "";
+  document.querySelector("#review-search").value = "";
+  if (lastReport) renderReviewMap(lastReport.audit.review_map || []);
+  document.querySelector("#review-search").focus();
+});
+
+document.querySelector("#review-unmarked").addEventListener("click", (event) => {
+  reviewUnmarkedOnly = !reviewUnmarkedOnly;
+  event.target.setAttribute("aria-pressed", reviewUnmarkedOnly ? "true" : "false");
+  if (lastReport) renderReviewMap(lastReport.audit.review_map || []);
+});
+
+document.querySelector("#clear-review-marks").addEventListener("click", () => {
+  inspectedLanes.clear();
+  if (reviewSessionKey) {
+    try {
+      window.localStorage.removeItem(reviewSessionKey);
+    } catch {
+      // Browser storage may be unavailable; clear the in-page state anyway.
+    }
+  }
+  if (lastReport) renderReviewMap(lastReport.audit.review_map || []);
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey
+    || document.querySelector("#review-map-section").hidden) return;
+  const active = document.activeElement;
+  if (active?.isContentEditable || ["INPUT", "TEXTAREA"].includes(active?.tagName)) return;
+  event.preventDefault();
+  document.querySelector("#review-search").focus();
 });
 
 document.querySelector("#attention-button").addEventListener("click", async () => {

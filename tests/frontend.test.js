@@ -4,8 +4,9 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
-function setup() {
+function setup(storage = new Map()) {
   const elements = new Map();
+  const windowListeners = {};
   const focusButtons = ["all", "source", "generated", "review"].map((focus) => {
     const button = new Element("button");
     button.dataset.focus = focus;
@@ -14,6 +15,7 @@ function setup() {
 
   function Element(tag) {
     this.tag = tag;
+    this.tagName = tag.toUpperCase();
     this.children = [];
     this.textContent = "";
     this.value = "";
@@ -26,10 +28,12 @@ function setup() {
   Element.prototype.addEventListener = function (name, handler) { this.listeners[name] = handler; };
   Element.prototype.setAttribute = function (name, value) { this[name] = value; };
   Element.prototype.scrollIntoView = function () {};
+  Element.prototype.focus = function () { document.activeElement = this; };
   Element.prototype.classList = { add() {}, remove() {}, toggle() {} };
 
   const document = {
     body: { dataset: { publicAudit: "false", visitorMetrics: "false" } },
+    activeElement: null,
     querySelector(selector) {
       if (!elements.has(selector)) elements.set(selector, new Element("div"));
       return elements.get(selector);
@@ -37,14 +41,22 @@ function setup() {
     querySelectorAll(selector) { return selector === "[data-focus]" ? focusButtons : []; },
     createElement(tag) { return new Element(tag); },
   };
-  const context = vm.createContext({ document, window: {}, navigator: {}, URL, URLSearchParams,
+  const window = {
+    localStorage: {
+      getItem(key) { return storage.get(key) ?? null; },
+      setItem(key, value) { storage.set(key, value); },
+      removeItem(key) { storage.delete(key); },
+    },
+    addEventListener(name, handler) { windowListeners[name] = handler; },
+  };
+  const context = vm.createContext({ document, window, navigator: {}, URL, URLSearchParams,
     Blob, fetch: async () => { throw new Error("unexpected fetch"); } });
   const script = fs.readFileSync(path.join(__dirname, "../qnode_auditor/static/app.js"), "utf8");
   vm.runInContext(script, context);
   const get = (selector) => document.querySelector(selector);
   const text = (node) => [node.textContent, ...node.children.map((child) =>
     typeof child === "string" ? child : text(child))].join(" ");
-  return { context, get, text, focusButtons };
+  return { context, get, text, focusButtons, storage, windowListeners };
 }
 
 test("Review Map filters all paths, source, generated, and since-review", () => {
@@ -65,6 +77,73 @@ test("Review Map filters all paths, source, generated, and since-review", () => 
   focusButtons[3].listeners.click();
   assert.match(text(get("#review-lanes")), /src\/app.py/);
   assert.doesNotMatch(text(get("#review-lanes")), /docs\/guide.md/);
+});
+
+test("Review Map search narrows paths and supports keyboard navigation", () => {
+  const { context, get, text, windowListeners } = setup();
+  context.fixture = { repository: { full_name: "owner/repo" },
+    pull_request: { number: 7, head_sha: "head-a" }, audit: { review_delta: null } };
+  context.lanes = [
+    { label: "services/api/", attention: "high", file_count: 2, additions: 2,
+      deletions: 0, signals: ["API schema"], owners: ["@api-team"], unowned_files: 0,
+      source_files: 1, test_path_matches: 0, review_questions: [], paths: ["services/api/app.py", "services/api/test_app.py"] },
+    { label: "docs/", attention: "routine", file_count: 1, additions: 1,
+      deletions: 0, signals: [], owners: [], unowned_files: 1, source_files: 0,
+      test_path_matches: 0, review_questions: [], paths: ["docs/readme.md"] },
+  ];
+  context.fixture.audit.review_map = context.lanes;
+  vm.runInContext("lastReport = fixture; loadReviewSession(fixture); renderReviewMap(lanes)", context);
+  const search = get("#review-search");
+  search.value = "test_app";
+  search.listeners.input({ target: search });
+  assert.match(text(get("#review-lanes")), /test_app.py/);
+  assert.doesNotMatch(text(get("#review-lanes")), /services\/api\/app\.py/);
+  search.value = "@api-team";
+  search.listeners.input({ target: search });
+  assert.match(text(get("#review-lanes")), /app.py.*test_app.py/);
+  assert.doesNotMatch(text(get("#review-lanes")), /docs\/readme.md/);
+  search.listeners.keydown({ key: "Escape", target: search });
+  assert.equal(search.value, "");
+  assert.match(text(get("#review-lanes")), /docs\/readme.md/);
+  get("#review-map-section").hidden = false;
+  const document = context.document;
+  let prevented = false;
+  windowListeners.keydown({ key: "/", preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(document.activeElement, search);
+});
+
+test("local review marks restore only for the same PR head and filter unmarked lanes", () => {
+  const storage = new Map();
+  const { context, get, text } = setup(storage);
+  context.fixture = { repository: { full_name: "owner/repo" },
+    pull_request: { number: 7, head_sha: "head-a" }, audit: { review_delta: null } };
+  context.lanes = [
+    { label: "api/", attention: "high", file_count: 1, additions: 1, deletions: 0,
+      signals: [], owners: [], unowned_files: 1, source_files: 1, test_path_matches: 0,
+      paths: ["api/app.py"] },
+    { label: "docs/", attention: "routine", file_count: 1, additions: 1, deletions: 0,
+      signals: [], owners: [], unowned_files: 1, source_files: 0, test_path_matches: 0,
+      paths: ["docs/readme.md"] },
+  ];
+  context.fixture.audit.review_map = context.lanes;
+  vm.runInContext("lastReport = fixture; loadReviewSession(fixture); renderReviewMap(lanes)", context);
+  const mark = get("#review-lanes").children[0].children.find((child) => child.className === "lane-action").children[0];
+  mark.listeners.click();
+  assert.equal(mark["aria-pressed"], "true");
+  assert.match(get("#review-progress").textContent, /1\/2 lanes marked inspected locally/);
+  assert.equal(storage.size, 1);
+  get("#review-unmarked").listeners.click({ target: get("#review-unmarked") });
+  assert.doesNotMatch(text(get("#review-lanes")), /api\/app.py/);
+  assert.match(text(get("#review-lanes")), /docs\/readme.md/);
+  vm.runInContext("loadReviewSession(fixture); reviewUnmarkedOnly = false; renderReviewMap(lanes)", context);
+  const restored = get("#review-lanes").children[0].children.find((child) => child.className === "lane-action").children[0];
+  assert.equal(restored["aria-pressed"], "true");
+  get("#clear-review-marks").listeners.click();
+  assert.equal(storage.size, 0);
+  assert.match(get("#review-progress").textContent, /0\/2 lanes marked inspected locally/);
+  vm.runInContext("fixture.pull_request.head_sha = 'head-b'; loadReviewSession(fixture); renderReviewMap(lanes)", context);
+  assert.match(get("#review-progress").textContent, /0\/2 lanes marked inspected locally/);
 });
 
 test("CI display distinguishes failed, skipped, and unobserved jobs", () => {
