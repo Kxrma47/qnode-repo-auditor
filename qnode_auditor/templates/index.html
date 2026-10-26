@@ -240,6 +240,17 @@ src/client/api.ts</textarea>
         <section id="review-map-section" class="review-map-section" hidden>
           <div class="subheading"><span>REVIEW MAP</span><b id="lane-count">0 LANES</b></div>
           <p class="section-note">Changed files grouped by lane, with CODEOWNERS, candidate test targets, configured CI jobs, and focused review questions. Path matches are prompts—not proof of coverage.</p>
+          <div class="review-session-controls">
+            <label for="review-search">Find a changed path or review lane</label>
+            <div class="review-search-row">
+              <input id="review-search" type="search" placeholder="Search path, lane, owner, or signal" autocomplete="off" spellcheck="false" aria-describedby="review-progress">
+              <button id="clear-review-search" type="button" class="ghost-button">Clear search</button>
+              <button id="review-unmarked" type="button" class="ghost-button" aria-pressed="false">Unmarked only</button>
+              <button id="clear-review-marks" type="button" class="ghost-button">Clear local marks</button>
+            </div>
+          </div>
+          <p id="review-progress" class="section-note" role="status" aria-live="polite"></p>
+          <p class="section-note">For live PRs, marks are saved in this browser when local storage is available. A new head commit starts fresh. Marks are personal notes, not GitHub approvals or completed reviews. Press / outside a text field to find a path.</p>
           <div class="focus-controls" role="group" aria-label="Review map path filter">
             <button type="button" class="ghost-button active" data-focus="all" aria-pressed="true">All paths</button>
             <button type="button" class="ghost-button" data-focus="source" aria-pressed="false">Source only</button>
